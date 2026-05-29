@@ -71,8 +71,8 @@ def send_b24_message(dialog_id: str, text: str):
     print(f"Отправляю: DIALOG_ID={dialog_id}")
     try:
         resp = httpx.post(
-            f"{B24_WEBHOOK}/imbot.message.add.json",
-            json={"BOT_ID": 316, "DIALOG_ID": dialog_id, "MESSAGE": text},
+            f"{B24_WEBHOOK}/im.message.add.json",
+            json={"DIALOG_ID": dialog_id, "MESSAGE": text},
             timeout=10
         )
         print(f"Ответ Битрикс: {resp.status_code} {resp.text}")
