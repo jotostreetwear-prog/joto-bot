@@ -118,8 +118,8 @@ def webhook():
         else:
             data = request.form.to_dict()
 
-        user_id = (data.get("data[USER][ID]") or data.get("USER_ID", "")).strip()
-        text = (data.get("data[MESSAGE]") or data.get("MESSAGE", "")).strip()
+        user_id = (data.get("data[PARAMS][DIALOG_ID]") or data.get("data[USER][ID]") or data.get("USER_ID", "")).strip()
+        text = (data.get("data[PARAMS][MESSAGE]") or data.get("data[MESSAGE]") or data.get("MESSAGE", "")).strip()
 
         if not text:
             return jsonify({"ok": True})
