@@ -589,7 +589,7 @@ def bitrix_events():
 
     return jsonify({"ok": True})
 
-# ===================== FLASK: СЕРВИСНЫЕ ЭНДПОИНТЫ =====================
+# ===================== FLASK: ИНТЕРФЕЙС ПРИЛОЖЕНИЯ =====================
 
 APP_PAGE_HTML = """<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
@@ -597,31 +597,161 @@ APP_PAGE_HTML = """<!DOCTYPE html>
 <title>Генерация артикулов</title>
 <script src="//api.bitrix24.com/api/v1/"></script>
 <style>
-  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:32px;color:#1a1a2e;background:#f5f7fb}
-  .card{max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 32px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
-  h1{font-size:22px;margin:0 0 4px}
-  .ok{color:#13a463;font-weight:600}
-  ol{line-height:1.7;padding-left:20px}
-  code{background:#eef1f6;padding:2px 6px;border-radius:5px}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:28px;color:#1a1a2e;background:#f5f7fb}
+  .card{max-width:520px;margin:0 auto;background:#fff;border-radius:14px;padding:26px 30px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+  h1{font-size:21px;margin:0 0 18px}
+  label{display:block;font-size:13px;color:#5a5a72;margin:14px 0 6px}
+  select,input{width:100%;padding:11px 12px;font-size:15px;border:1px solid #d7dbe6;border-radius:9px;background:#fff}
+  select:focus,input:focus{outline:none;border-color:#3b82f6}
+  .hint{font-size:12px;color:#8a8aa0;margin-top:6px}
+  button{margin-top:20px;width:100%;padding:13px;font-size:15px;font-weight:600;color:#fff;background:#2563eb;border:none;border-radius:9px;cursor:pointer}
+  button:hover{background:#1d4ed8}
+  button:disabled{background:#9db8ee;cursor:default}
+  .result{margin-top:20px;padding:18px;border-radius:11px;background:#ecfdf3;border:1px solid #b6ebc9;display:none}
+  .result.show{display:block}
+  .article{font-size:24px;font-weight:700;color:#0c7a44;letter-spacing:.5px}
+  .meta{font-size:13px;color:#3f6f52;margin-top:6px;line-height:1.6}
+  .copy{margin-top:12px;width:auto;padding:8px 16px;font-size:13px;background:#0c7a44}
+  .copy:hover{background:#0a6236}
+  .err{margin-top:16px;color:#c0392b;font-size:14px;display:none}
+  .err.show{display:block}
 </style></head>
 <body>
 <div class="card">
   <h1>🏷 Генерация артикулов</h1>
-  <p class="ok">Бот «Article Generator» работает ✓</p>
-  <p>Это чат-бот. Работайте с ним в мессенджере Битрикс24:</p>
-  <ol>
-    <li>Откройте <b>Чат</b> и найдите бота <b>«Article Generator»</b>.</li>
-    <li>Напишите <code>привет</code> — бот ответит и покажет категории.</li>
-    <li>Напишите <code>артикул</code> и пройдите 3 шага: категория → цвет → название.</li>
-  </ol>
-  <p>Бот также сам присылает мониторинг CTR (09:00 МСК) и отчёт по задачам (18:00 МСК).</p>
+
+  <label>Категория товара</label>
+  <select id="category">
+    <option value="">— выберите категорию —</option>
+    <option value="жилет">Жилет (01)</option>
+    <option value="куртка">Куртка (02)</option>
+    <option value="водолазка">Водолазка (03)</option>
+    <option value="джинсы">Джинсы (04)</option>
+    <option value="худи">Худи (05)</option>
+    <option value="свитер">Свитер (06)</option>
+    <option value="лонгслив">Лонгслив (07)</option>
+    <option value="брюки">Брюки (09)</option>
+    <option value="шорты">Шорты (10)</option>
+    <option value="футболка">Футболка (11)</option>
+  </select>
+  <div class="hint" id="nextHint"></div>
+
+  <label>Цвет (латиницей)</label>
+  <input id="color" placeholder="например: black, white, grey, navy" autocomplete="off">
+
+  <label>Название товара</label>
+  <input id="name" placeholder="например: Oversize Hoodie" autocomplete="off">
+
+  <button id="go">Создать артикул</button>
+
+  <div class="err" id="err"></div>
+
+  <div class="result" id="result">
+    <div class="article" id="article"></div>
+    <div class="meta" id="meta"></div>
+    <button class="copy" id="copy">Скопировать артикул</button>
+  </div>
 </div>
-<script>try{ BX24.init(function(){ BX24.fitWindow && BX24.fitWindow(); }); }catch(e){}</script>
+
+<script>
+try{ BX24.init(function(){ BX24.fitWindow && BX24.fitWindow(); }); }catch(e){}
+
+var cat=document.getElementById('category'), colorEl=document.getElementById('color'),
+    nameEl=document.getElementById('name'), go=document.getElementById('go'),
+    err=document.getElementById('err'), res=document.getElementById('result'),
+    artEl=document.getElementById('article'), metaEl=document.getElementById('meta'),
+    hint=document.getElementById('nextHint'), copyBtn=document.getElementById('copy');
+
+cat.addEventListener('change', function(){
+  hint.textContent='';
+  if(!cat.value) return;
+  fetch('/api/next?category='+encodeURIComponent(cat.value))
+    .then(function(r){return r.json()})
+    .then(function(d){ if(d.ok) hint.textContent='Следующий номер модели: '+d.next_number; })
+    .catch(function(){});
+});
+
+function showErr(m){ err.textContent=m; err.classList.add('show'); res.classList.remove('show'); }
+
+go.addEventListener('click', function(){
+  err.classList.remove('show'); res.classList.remove('show');
+  if(!cat.value){ showErr('Выберите категорию'); return; }
+  if(!colorEl.value.trim()){ showErr('Укажите цвет'); return; }
+  go.disabled=true; go.textContent='Создаю...';
+  fetch('/api/article', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({category:cat.value, color:colorEl.value, name:nameEl.value})
+  }).then(function(r){return r.json()}).then(function(d){
+    go.disabled=false; go.textContent='Создать артикул';
+    if(!d.ok){ showErr(d.error||'Ошибка'); return; }
+    artEl.textContent=d.article;
+    metaEl.innerHTML='Категория: '+d.category_title+' &nbsp;•&nbsp; Цвет: '+d.color+
+      ' &nbsp;•&nbsp; Модель №'+d.model_number+(d.name?(' &nbsp;•&nbsp; '+d.name):'');
+    res.classList.add('show');
+    hint.textContent='';
+  }).catch(function(){
+    go.disabled=false; go.textContent='Создать артикул';
+    showErr('Не удалось связаться с сервером');
+  });
+});
+
+copyBtn.addEventListener('click', function(){
+  var t=artEl.textContent;
+  if(navigator.clipboard){ navigator.clipboard.writeText(t); }
+  copyBtn.textContent='Скопировано ✓';
+  setTimeout(function(){ copyBtn.textContent='Скопировать артикул'; }, 1500);
+});
+</script>
 </body></html>"""
+
+# Человекочитаемые названия категорий для интерфейса
+CATEGORY_TITLES = {
+    "жилет": "Жилет", "куртка": "Куртка", "водолазка": "Водолазка",
+    "джинсы": "Джинсы", "худи": "Худи", "свитер": "Свитер",
+    "лонгслив": "Лонгслив", "брюки": "Брюки", "шорты": "Шорты", "футболка": "Футболка",
+}
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     return Response(APP_PAGE_HTML, mimetype="text/html")
+
+@app.route("/api/next", methods=["GET"])
+def api_next():
+    """Показать следующий номер модели для категории БЕЗ увеличения счётчика."""
+    category = (request.args.get("category", "") or "").strip().lower()
+    if category not in CATEGORIES:
+        return jsonify({"ok": False, "error": "Неизвестная категория"}), 400
+    code = CATEGORIES[category]
+    next_num = str(get_current_counter(code) + 1).zfill(3)
+    return jsonify({"ok": True, "category_code": code, "next_number": next_num})
+
+@app.route("/api/article", methods=["POST"])
+def api_article():
+    """Создать артикул: увеличить счётчик и вернуть готовый артикул."""
+    data = request.get_json(silent=True) or request.form
+    category = (data.get("category", "") or "").strip().lower()
+    color = (data.get("color", "") or "").strip().lower().replace(" ", "")
+    name = (data.get("name", "") or "").strip()
+    if category not in CATEGORIES:
+        return jsonify({"ok": False, "error": "Неизвестная категория"}), 400
+    if not color:
+        return jsonify({"ok": False, "error": "Укажите цвет"}), 400
+    code = CATEGORIES[category]
+    model_number = get_next_model_number(code)
+    article = f"J{code}{model_number}/{color}"
+    return jsonify({
+        "ok": True,
+        "article": article,
+        "category": category,
+        "category_title": CATEGORY_TITLES.get(category, category.capitalize()),
+        "category_code": code,
+        "color": color,
+        "name": name,
+        "model_number": model_number,
+    })
+
+# ===================== FLASK: СЕРВИСНЫЕ ЭНДПОИНТЫ =====================
 
 @app.route("/admin/bitrix/register", methods=["GET"])
 def admin_register():
