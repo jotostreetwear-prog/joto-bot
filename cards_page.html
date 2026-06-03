@@ -227,8 +227,21 @@ td textarea{min-height:40px}
       <p class="note">Заполните хотя бы обязательные (отмечены «*»). Значение применится ко всем создаваемым карточкам.</p>
     </div>
 
+    <div class="block" id="nkBlock">
+      <h2>3 · ГТИНы из Честного ЗНАКа</h2>
+      <div id="nkStatus" class="muted">Проверяю настройку интеграции…</div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn secondary" id="nkCreateBtn" type="button" disabled>
+          <span class="spin"></span><span class="lbl">Создать ГТИНы в Честном ЗНАКе и подставить</span>
+        </button>
+      </div>
+      <p class="note">Создаёт товары в Национальном каталоге по строкам ниже, получает ГТИНы и
+        автоматически проставляет их в колонку «Баркод». Затем жмите «Создать карточки на WB».</p>
+      <div class="status" id="nkResult"></div>
+    </div>
+
     <div class="block">
-      <h2>3 · Карточки</h2>
+      <h2>4 · Карточки</h2>
       <div class="tbl-wrap">
         <table id="createTable">
           <thead><tr>
@@ -487,6 +500,46 @@ $("genBarcodesBtn").addEventListener("click",async function(){
   finally{ spinOn($("genBarcodesBtn"),false,"Сгенерировать баркоды"); }
 });
 
+/* ---- ГТИНы (Честный ЗНАК) ---- */
+async function checkNkStatus(){
+  var el=$("nkStatus"),btn=$("nkCreateBtn");
+  try{
+    var j=await api("/api/nk/status");
+    if(j.configured){
+      el.innerHTML="✓ Интеграция с Честным ЗНАКом настроена."; el.style.color="var(--ok)"; btn.disabled=false;
+    }else{
+      var miss=[]; if(!j.has_api_key) miss.push("NK_API_KEY"); if(!j.has_party_id) miss.push("NK_PARTY_ID");
+      el.innerHTML="⚠ Интеграция не настроена. Добавьте в переменные Railway: <b>"+miss.join(", ")+"</b>, затем перезагрузите страницу.";
+      el.style.color="var(--ink-2)"; btn.disabled=true;
+    }
+  }catch(e){ el.textContent="Не удалось проверить статус интеграции."; btn.disabled=true; }
+  fit();
+}
+$("nkCreateBtn").addEventListener("click",async function(){
+  var sid=parseInt($("createSubj").value,10);
+  var rows=Array.prototype.slice.call($("createBody").querySelectorAll("tr"));
+  var items=[],rowByVc={};
+  rows.forEach(function(r){
+    var vc=r.querySelector(".c-vc").value.trim();
+    if(!vc) return;
+    rowByVc[vc]=r;
+    items.push({ subjectID:sid, variants:[{ vendorCode:vc, title:r.querySelector(".c-title").value.trim(), brand:$("cBrand").value.trim() }] });
+  });
+  if(items.length===0){ showStatus($("nkResult"),false,"Заполните хотя бы артикулы в строках ниже"); return; }
+  spinOn($("nkCreateBtn"),true,"Создаю ГТИНы…");
+  try{
+    var j=await api("/api/nk/create-gtins",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:items})});
+    if(j.ok&&j.gtins){
+      var n=0;
+      Object.keys(j.gtins).forEach(function(vc){ if(rowByVc[vc]){ rowByVc[vc].querySelector(".c-bar").value=j.gtins[vc]; n++; } });
+      showStatus($("nkResult"),true,"Получено и проставлено ГТИНов: "+n+". Теперь создайте карточки на WB.");
+    }else{
+      showStatus($("nkResult"),false,(j.error||"Ошибка")+(j.needs_config?" — добавьте ключи НК в Railway":""));
+    }
+  }catch(e){ showStatus($("nkResult"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("nkCreateBtn"),false,"Создать ГТИНы в Честном ЗНАКе и подставить"); }
+});
+
 $("createBtn").addEventListener("click",async function(){
   var sid=parseInt($("createSubj").value,10);
   if(!sid){ showStatus($("createStatus"),false,"Выберите категорию"); return; }
@@ -533,6 +586,7 @@ function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(ch){retu
 })();
 
 updateFieldUI();
+checkNkStatus();
 window.addEventListener("load",fit);
 </script>
 </body>

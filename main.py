@@ -9,6 +9,8 @@ import psycopg2
 from flask import Flask, request, jsonify, Response
 from datetime import datetime, timedelta
 
+import nk_integration as nk  # интеграция с Национальным каталогом (Честный ЗНАК)
+
 app = Flask(__name__)
 
 # ===================== КОНФИГ (переменные окружения) =====================
@@ -1147,6 +1149,29 @@ def api_wb_charcs():
                   "unitName": c.get("unitName"), "maxCount": c.get("maxCount"),
                   "charcType": c.get("charcType")} for c in charcs]
         return jsonify({"ok": True, "charcs": items})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+# ===================== НАЦИОНАЛЬНЫЙ КАТАЛОГ (ЧЕСТНЫЙ ЗНАК): ГТИНЫ =====================
+# Каркас Варианта Б: создать товары в НК → получить ГТИНы → подставить в карточки WB.
+
+@app.route("/api/nk/status", methods=["GET"])
+def api_nk_status():
+    return jsonify({"ok": True, **nk.nk_status()})
+
+@app.route("/api/nk/create-gtins", methods=["POST"])
+def api_nk_create_gtins():
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    if not items:
+        return jsonify({"ok": False, "error": "Нет товаров для создания ГТИНов"}), 400
+    try:
+        gtin_map = nk.create_gtins_for_items(items)
+        return jsonify({"ok": True, "gtins": gtin_map, "count": len(gtin_map)})
+    except nk.NKNotConfigured as e:
+        return jsonify({"ok": False, "error": str(e), "needs_config": True}), 400
+    except nk.NKError as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 
