@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JOTO — Массовые карточки WB</title>
+<style>
+:root{
+  --accent:#CCFF00; --accent-ink:#0A0A0A; --accent-deep:#9bc400;
+  --serif: Georgia, "Times New Roman", serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --r:12px; --ease:cubic-bezier(.2,.7,.2,1);
+}
+[data-theme="light"]{
+  --bg:#F1F1EE; --surface:#FFFFFF; --surface-2:#F7F7F4;
+  --ink:#0B0B0C; --ink-2:#56564F; --ink-3:#8E8E86;
+  --line:#E4E4DE; --line-strong:#0B0B0C; --field:#FFFFFF;
+  --ok:#2f8f4e; --err:#e0483a;
+  --shadow:0 1px 2px rgba(11,11,12,.04), 0 18px 44px -28px rgba(11,11,12,.35);
+}
+[data-theme="dark"]{
+  --bg:#0A0A0B; --surface:#141416; --surface-2:#1B1B1E;
+  --ink:#F3F3EE; --ink-2:#A9A9A2; --ink-3:#73736C;
+  --line:#27272B; --line-strong:#3A3A40; --field:#0F0F11;
+  --ok:#5fd083; --err:#ff6a5c;
+  --shadow:0 1px 0 rgba(255,255,255,.02), 0 24px 60px -30px rgba(0,0,0,.9);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh}
+.stage{width:100%;max-width:1080px;margin:0 auto;padding:26px 20px 60px}
+.head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px}
+.wordmark{font-style:italic;font-weight:900;font-size:30px;letter-spacing:-.04em;text-transform:lowercase}
+.screen-title{font-family:var(--serif);font-style:italic;font-weight:400;font-size:26px;margin:2px 0 0}
+.head-right{display:flex;gap:8px;align-items:center}
+.tabs{display:flex;gap:8px;margin-bottom:22px;flex-wrap:wrap}
+.tab{font-weight:700;font-size:14px;padding:11px 18px;border-radius:var(--r);border:1.5px solid var(--line);
+  background:var(--surface);color:var(--ink-2);cursor:pointer;transition:all .15s var(--ease)}
+.tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+[data-theme="dark"] .tab.active{color:#0A0A0A}
+.panel[hidden]{display:none}
+.block{background:var(--surface);border:1.5px solid var(--line);border-radius:calc(var(--r) + 4px);
+  padding:20px;margin-bottom:18px;box-shadow:var(--shadow)}
+.block h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);margin:0 0 14px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:7px;flex:1;min-width:170px}
+.field.grow2{flex:2}
+.label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--ink-2)}
+.label .req{color:var(--err)}
+input[type=text],input[type=number],select,textarea{width:100%;font-family:var(--sans);font-size:15px;color:var(--ink);
+  background:var(--field);border:1.5px solid var(--line);border-radius:var(--r);padding:11px 13px;outline:none;
+  transition:border-color .15s,box-shadow .15s;-webkit-appearance:none;appearance:none}
+textarea{min-height:84px;resize:vertical;font-family:var(--sans)}
+select:focus,input:focus,textarea:focus{border-color:var(--line-strong);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 26%, transparent)}
+.btn{font-weight:700;font-size:14px;padding:12px 18px;border-radius:var(--r);cursor:pointer;border:1.5px solid var(--ink);
+  background:var(--ink);color:#fff;display:inline-flex;align-items:center;gap:9px;justify-content:center;
+  transition:transform .14s var(--ease),filter .15s}
+[data-theme="dark"] .btn{color:#0A0A0A}
+.btn:hover{transform:translateY(-1px)}
+.btn[disabled]{opacity:.55;cursor:default;transform:none}
+.btn.secondary{background:transparent;color:var(--ink);border-color:var(--line-strong)}
+[data-theme="dark"] .btn.secondary{color:var(--ink)}
+.btn.accent{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.sm{padding:8px 12px;font-size:13px}
+.btn .spin{display:none;width:15px;height:15px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
+.btn.loading .spin{display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+.muted{color:var(--ink-3);font-size:13px}
+.note{font-size:12.5px;color:var(--ink-2);margin:8px 0 0;line-height:1.5}
+.status{margin-top:14px;font-size:14px;font-weight:600;display:none;align-items:center;gap:8px;line-height:1.45}
+.status.show{display:flex}
+.status.ok{color:var(--ok)}
+.status.err{color:var(--err)}
+/* список артикулов */
+.picker{border:1.5px solid var(--line);border-radius:var(--r);background:var(--field);max-height:300px;overflow:auto}
+.picker-tools{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--field);z-index:2}
+.picker-tools input{flex:1}
+.pick-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.pick-row:last-child{border-bottom:none}
+.pick-row:hover{background:var(--surface-2)}
+.pick-row input{width:18px;height:18px;flex:none}
+.pick-vc{font-family:var(--mono);font-weight:600;font-size:13.5px}
+.pick-meta{font-size:12px;color:var(--ink-3)}
+.pick-row .grow{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pick-row .grow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.selcount{font-size:13px;color:var(--ink-2);font-weight:600}
+/* таблица создания */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+td input,td textarea{font-size:14px;padding:8px 10px}
+td textarea{min-height:40px}
+.tbl-wrap{overflow:auto;border:1.5px solid var(--line);border-radius:var(--r)}
+.del-row{background:transparent;border:1px solid var(--line);color:var(--err);border-radius:8px;cursor:pointer;font-size:16px;width:30px;height:30px;line-height:1}
+.charcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:6px}
+.charc-tag{font-size:10px;color:var(--err);font-weight:700;letter-spacing:.05em}
+#theme-toggle{width:38px;height:38px;border-radius:50%;cursor:pointer;display:grid;place-items:center;font-size:14px;
+  background:var(--surface);color:var(--ink-2);border:1.5px solid var(--line)}
+.link{color:var(--ink-2);font-size:13px;text-decoration:none;font-weight:600;border-bottom:1px solid var(--line)}
+.link:hover{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="stage">
+  <header class="head">
+    <div class="brand">
+      <span class="wordmark">joto</span>
+      <div>
+        <h1 class="screen-title">Массовые карточки WB</h1>
+        <div class="muted">Создание и редактирование карточек Wildberries</div>
+      </div>
+    </div>
+    <div class="head-right">
+      <a class="link" href="/">← Артикулы</a>
+      <button id="theme-toggle" type="button" title="Тема">☾</button>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-mode="edit" type="button">✎ Редактировать массово</button>
+    <button class="tab" data-mode="create" type="button">＋ Создать массово</button>
+  </div>
+
+  <!-- ============ РЕДАКТИРОВАНИЕ ============ -->
+  <section class="panel" id="panel-edit">
+    <div class="block">
+      <h2>1 · Выбор карточек</h2>
+      <div class="row">
+        <div class="field grow2">
+          <label class="label" for="searchInp">Поиск по артикулу / названию (необязательно)</label>
+          <input id="searchInp" type="text" placeholder="например: J05 или худи" autocomplete="off">
+        </div>
+        <button class="btn" id="loadBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить карточки с WB</span></button>
+      </div>
+      <div id="pickerWrap" style="margin-top:14px" hidden>
+        <div class="picker" id="picker"></div>
+        <div class="row" style="margin-top:10px;justify-content:space-between">
+          <span class="selcount" id="selCount">Выбрано: 0</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn secondary sm" id="selAll" type="button">Выбрать все</button>
+            <button class="btn secondary sm" id="selNone" type="button">Снять выбор</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="block" id="editFields" hidden>
+      <h2>2 · Что менять</h2>
+      <div class="row">
+        <div class="field">
+          <label class="label" for="fieldSel">Поле</label>
+          <select id="fieldSel">
+            <option value="description">SEO-описание</option>
+            <option value="title">Название</option>
+            <option value="brand">Бренд</option>
+            <option value="vendorCode">Артикул (vendorCode)</option>
+            <option value="subjectID">Категория</option>
+            <option value="characteristic">Характеристика</option>
+            <option value="barcode">Баркод (добавить)</option>
+          </select>
+        </div>
+        <div class="field" id="charcPickWrap" hidden>
+          <label class="label" for="charcSel">Характеристика</label>
+          <select id="charcSel"></select>
+        </div>
+        <div class="field" id="subjPickWrap" hidden>
+          <label class="label" for="subjSel">Новая категория</label>
+          <select id="subjSel"><option value="">— загрузка —</option></select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:14px">
+        <div class="field grow2" id="valTextWrap">
+          <label class="label" for="valText">Новое значение</label>
+          <textarea id="valText" placeholder="Введите новое значение для всех выбранных карточек"></textarea>
+        </div>
+        <div class="field" id="valLineWrap" hidden>
+          <label class="label" for="valLine">Новое значение</label>
+          <input id="valLine" type="text" autocomplete="off">
+        </div>
+        <button class="btn secondary" id="genBarcodeBtn" type="button" hidden><span class="spin"></span><span class="lbl">Сгенерировать баркод</span></button>
+      </div>
+      <p class="note" id="editNote"></p>
+
+      <button class="btn accent" id="applyBtn" type="button" style="margin-top:16px">
+        <span class="spin"></span><span class="lbl">Применить и сохранить на WB</span>
+      </button>
+      <div class="status" id="editStatus"></div>
+    </div>
+  </section>
+
+  <!-- ============ СОЗДАНИЕ ============ -->
+  <section class="panel" id="panel-create" hidden>
+    <div class="block">
+      <h2>1 · Категория и общие поля</h2>
+      <div class="row">
+        <div class="field grow2">
+          <label class="label" for="subjSearch">Категория WB</label>
+          <div style="display:flex;gap:8px">
+            <input id="subjSearch" type="text" placeholder="введите название, напр. худи" autocomplete="off">
+            <button class="btn secondary" id="subjSearchBtn" type="button"><span class="spin"></span><span class="lbl">Найти</span></button>
+          </div>
+          <select id="createSubj" style="margin-top:8px"><option value="">— сначала найдите категорию —</option></select>
+        </div>
+        <div class="field">
+          <label class="label" for="cBrand">Бренд</label>
+          <input id="cBrand" type="text" value="JOTO" autocomplete="off">
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div class="field"><label class="label" for="cLen">Длина, см</label><input id="cLen" type="number" value="30"></div>
+        <div class="field"><label class="label" for="cWid">Ширина, см</label><input id="cWid" type="number" value="25"></div>
+        <div class="field"><label class="label" for="cHei">Высота, см</label><input id="cHei" type="number" value="5"></div>
+        <div class="field"><label class="label" for="cWei">Вес брутто, кг</label><input id="cWei" type="number" step="0.01" value="0.5"></div>
+        <div class="field"><label class="label" for="cPrice">Цена, ₽</label><input id="cPrice" type="number" value="2990"></div>
+        <div class="field"><label class="label" for="cSize">Размер</label><input id="cSize" type="text" value="0" placeholder="0 = безразмерный"></div>
+      </div>
+    </div>
+
+    <div class="block" id="charcsBlock" hidden>
+      <h2>2 · Характеристики (общие для всех новых карточек)</h2>
+      <button class="btn secondary sm" id="loadCharcsBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить характеристики категории</span></button>
+      <div class="charcs" id="charcsBox"></div>
+      <p class="note">Заполните хотя бы обязательные (отмечены «*»). Значение применится ко всем создаваемым карточкам.</p>
+    </div>
+
+    <div class="block">
+      <h2>3 · Карточки</h2>
+      <div class="tbl-wrap">
+        <table id="createTable">
+          <thead><tr>
+            <th style="width:160px">Артикул *</th>
+            <th style="width:200px">Название *</th>
+            <th>SEO-описание</th>
+            <th style="width:150px">Баркод</th>
+            <th style="width:40px"></th>
+          </tr></thead>
+          <tbody id="createBody"></tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:12px;gap:8px">
+        <button class="btn secondary sm" id="addRowBtn" type="button">＋ Добавить строку</button>
+        <button class="btn secondary sm" id="genBarcodesBtn" type="button"><span class="spin"></span><span class="lbl">Сгенерировать баркоды</span></button>
+      </div>
+      <button class="btn accent" id="createBtn" type="button" style="margin-top:16px">
+        <span class="spin"></span><span class="lbl">Создать карточки на WB</span>
+      </button>
+      <div class="status" id="createStatus"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ---------- Bitrix embed ---------- */
+function fit(){ try{ if(typeof BX24!=="undefined"&&BX24.fitWindow) BX24.fitWindow(); }catch(e){} }
+(function(){
+  var q=location.search||"";
+  var inB=/[?&](DOMAIN|APP_SID|AUTH_ID)=/i.test(q)||/bitrix/i.test(document.referrer||"");
+  if(!inB) return;
+  var s=document.createElement("script"); s.src="//api.bitrix24.com/api/v1/";
+  s.onload=function(){ try{ if(typeof BX24!=="undefined") BX24.init(function(){fit();}); }catch(e){} };
+  document.head.appendChild(s);
+})();
+
+var $=function(id){return document.getElementById(id);};
+function spinOn(btn,on,txt){ if(!btn)return; btn.classList.toggle("loading",on); btn.disabled=on;
+  var l=btn.querySelector(".lbl"); if(l&&txt!=null) l.textContent=txt; }
+function showStatus(el,ok,msg){ el.className="status show "+(ok?"ok":"err"); el.textContent=(ok?"✓ ":"⚠ ")+msg; fit(); }
+
+async function api(url,opts){ var r=await fetch(url,opts); return await r.json(); }
+
+/* ---------- Переключение режимов ---------- */
+document.querySelectorAll(".tab").forEach(function(t){
+  t.addEventListener("click",function(){
+    document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("active");});
+    t.classList.add("active");
+    var m=t.dataset.mode;
+    $("panel-edit").hidden=(m!=="edit");
+    $("panel-create").hidden=(m!=="create");
+    fit();
+  });
+});
+
+/* ============================================================
+   РЕЖИМ РЕДАКТИРОВАНИЯ
+============================================================ */
+var ALL_CARDS=[];          // simplified карточки с WB
+var selected=new Set();    // nmID выбранных
+
+$("loadBtn").addEventListener("click",async function(){
+  spinOn($("loadBtn"),true,"Загружаю…");
+  try{
+    var j=await api("/api/wb/cards?limit=1000&search="+encodeURIComponent($("searchInp").value.trim()));
+    if(!j.ok){ alert("Ошибка WB: "+j.error); return; }
+    ALL_CARDS=j.cards||[]; selected.clear();
+    renderPicker(ALL_CARDS);
+    $("pickerWrap").hidden=false;
+    $("editFields").hidden=(ALL_CARDS.length===0);
+    if(ALL_CARDS.length===0) alert("Карточки не найдены");
+  }catch(e){ alert("Не удалось связаться с сервером"); }
+  finally{ spinOn($("loadBtn"),false,"Загрузить карточки с WB"); fit(); }
+});
+
+function renderPicker(cards){
+  var html='<div class="picker-tools"><input id="pickFilter" type="text" placeholder="фильтр по артикулу/названию"></div>';
+  cards.forEach(function(c){
+    html+='<label class="pick-row" data-vc="'+esc((c.vendorCode||"")+" "+(c.title||"")).toLowerCase()+'">'
+      +'<input type="checkbox" value="'+c.nmID+'" '+(selected.has(c.nmID)?"checked":"")+'>'
+      +'<span class="grow"><span class="pick-vc">'+esc(c.vendorCode||"—")+'</span>'
+      +'<span class="pick-meta">'+esc(c.title||"")+' · '+esc(c.subjectName||"")+'</span></span></label>';
+  });
+  $("picker").innerHTML=html;
+  $("picker").querySelectorAll('input[type=checkbox]').forEach(function(cb){
+    cb.addEventListener("change",function(){
+      var id=parseInt(cb.value,10);
+      if(cb.checked) selected.add(id); else selected.delete(id);
+      updateSelCount();
+    });
+  });
+  var f=$("pickFilter");
+  if(f) f.addEventListener("input",function(){
+    var q=f.value.trim().toLowerCase();
+    $("picker").querySelectorAll(".pick-row").forEach(function(r){
+      r.style.display=(!q||r.dataset.vc.indexOf(q)>=0)?"":"none";
+    });
+  });
+  updateSelCount();
+}
+function updateSelCount(){ $("selCount").textContent="Выбрано: "+selected.size; }
+$("selAll").addEventListener("click",function(){
+  $("picker").querySelectorAll('.pick-row').forEach(function(r){
+    if(r.style.display==="none")return;
+    var cb=r.querySelector("input"); cb.checked=true; selected.add(parseInt(cb.value,10));
+  });
+  updateSelCount();
+});
+$("selNone").addEventListener("click",function(){
+  $("picker").querySelectorAll('input[type=checkbox]').forEach(function(cb){cb.checked=false;});
+  selected.clear(); updateSelCount();
+});
+
+/* выбор поля «что менять» */
+var fieldSel=$("fieldSel");
+fieldSel.addEventListener("change",updateFieldUI);
+function updateFieldUI(){
+  var f=fieldSel.value;
+  var bigText=(f==="description");
+  $("valTextWrap").hidden=!bigText;
+  $("valLineWrap").hidden=(bigText||f==="subjectID"||f==="characteristic");
+  $("charcPickWrap").hidden=(f!=="characteristic");
+  $("subjPickWrap").hidden=(f!=="subjectID");
+  $("genBarcodeBtn").hidden=(f!=="barcode");
+  var note="";
+  if(f==="vendorCode"||f==="barcode") note="⚠ Это поле уникально для каждой карточки — применяйте к одной карточке за раз.";
+  if(f==="subjectID") note="⚠ Wildberries не всегда разрешает смену категории у существующей карточки — при отказе WB вернёт ошибку.";
+  if(f==="characteristic") note="Список характеристик собран из выбранных карточек. Несколько значений вводите через запятую.";
+  $("editNote").textContent=note;
+  if(f==="characteristic") fillCharcSelect();
+  if(f==="subjectID") loadSubjectsInto($("subjSel"));
+  fit();
+}
+function fillCharcSelect(){
+  var map={};
+  selectedCards().forEach(function(c){
+    (c.characteristics||[]).forEach(function(ch){ if(ch.id!=null) map[ch.id]=ch.name; });
+  });
+  var html=Object.keys(map).map(function(id){return '<option value="'+id+'">'+esc(map[id])+'</option>';}).join("");
+  $("charcSel").innerHTML=html||'<option value="">— у выбранных карточек нет характеристик —</option>';
+}
+
+/* генерация одного баркода */
+$("genBarcodeBtn").addEventListener("click",async function(){
+  spinOn($("genBarcodeBtn"),true,"…");
+  try{
+    var j=await api("/api/wb/barcodes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({count:1})});
+    if(j.ok&&j.barcodes&&j.barcodes.length){ $("valLine").value=j.barcodes[0]; }
+    else alert("Не удалось получить баркод: "+(j.error||""));
+  }catch(e){ alert("Ошибка генерации баркода"); }
+  finally{ spinOn($("genBarcodeBtn"),false,"Сгенерировать баркод"); }
+});
+
+function selectedCards(){ return ALL_CARDS.filter(function(c){return selected.has(c.nmID);}); }
+
+/* применить изменения */
+$("applyBtn").addEventListener("click",async function(){
+  var cards=selectedCards();
+  if(cards.length===0){ showStatus($("editStatus"),false,"Не выбрано ни одной карточки"); return; }
+  var f=fieldSel.value;
+  var value=(f==="description")?$("valText").value:$("valLine").value;
+  var charcId=null,charcName=null;
+  if(f==="characteristic"){ charcId=parseInt($("charcSel").value,10); charcName=$("charcSel").selectedOptions[0]?$("charcSel").selectedOptions[0].textContent:null;
+    value=$("valLine").value.split(",").map(function(s){return s.trim();}).filter(Boolean); }
+  if(f==="subjectID"){ value=$("subjSel").value; if(!value){ showStatus($("editStatus"),false,"Выберите категорию"); return; } }
+  if((f!=="characteristic")&&(value===""||value==null)){ showStatus($("editStatus"),false,"Введите новое значение"); return; }
+
+  // шлём сырые карточки выбранных строк
+  var payload={ cards:cards.map(function(c){return c.raw;}), field:f, value:value, charcId:charcId, charcName:charcName };
+  spinOn($("applyBtn"),true,"Сохраняю на WB…");
+  try{
+    var j=await api("/api/wb/bulk-edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    if(j.ok) showStatus($("editStatus"),true,"Обновлено карточек: "+j.updated+". Изменения отправлены на Wildberries.");
+    else showStatus($("editStatus"),false,j.error||"Ошибка обновления");
+  }catch(e){ showStatus($("editStatus"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("applyBtn"),false,"Применить и сохранить на WB"); }
+});
+
+/* ============================================================
+   РЕЖИМ СОЗДАНИЯ
+============================================================ */
+async function loadSubjectsInto(sel,name){
+  try{
+    var j=await api("/api/wb/subjects?name="+encodeURIComponent(name||""));
+    if(!j.ok){ sel.innerHTML='<option value="">ошибка: '+esc(j.error)+'</option>'; return; }
+    var html='<option value="">— выберите категорию —</option>';
+    (j.subjects||[]).forEach(function(s){
+      html+='<option value="'+s.subjectID+'">'+esc(s.subjectName)+(s.parentName?(' · '+esc(s.parentName)):"")+'</option>';
+    });
+    sel.innerHTML=html;
+  }catch(e){ sel.innerHTML='<option value="">ошибка загрузки</option>'; }
+}
+
+$("subjSearchBtn").addEventListener("click",async function(){
+  spinOn($("subjSearchBtn"),true,"…");
+  await loadSubjectsInto($("createSubj"),$("subjSearch").value.trim());
+  spinOn($("subjSearchBtn"),false,"Найти");
+  fit();
+});
+$("createSubj").addEventListener("change",function(){
+  $("charcsBlock").hidden=!$("createSubj").value;
+  $("charcsBox").innerHTML="";
+});
+
+var CHARCS=[]; // характеристики выбранной категории
+$("loadCharcsBtn").addEventListener("click",async function(){
+  var sid=$("createSubj").value; if(!sid){ alert("Сначала выберите категорию"); return; }
+  spinOn($("loadCharcsBtn"),true,"…");
+  try{
+    var j=await api("/api/wb/charcs?subjectId="+sid);
+    if(!j.ok){ alert("Ошибка: "+j.error); return; }
+    CHARCS=j.charcs||[];
+    CHARCS.sort(function(a,b){return (b.required?1:0)-(a.required?1:0);});
+    $("charcsBox").innerHTML=CHARCS.map(function(c){
+      return '<div class="field"><label class="label">'+esc(c.name)
+        +(c.required?' <span class="charc-tag">обязательно</span>':'')
+        +(c.unitName?(' <span class="muted">('+esc(c.unitName)+')</span>'):'')
+        +'</label><input type="text" data-cid="'+c.id+'" autocomplete="off"></div>';
+    }).join("");
+  }catch(e){ alert("Ошибка загрузки характеристик"); }
+  finally{ spinOn($("loadCharcsBtn"),false,"Загрузить характеристики категории"); fit(); }
+});
+
+function collectCharcs(){
+  var out=[];
+  $("charcsBox").querySelectorAll("input[data-cid]").forEach(function(inp){
+    var v=inp.value.trim(); if(!v) return;
+    out.push({ id:parseInt(inp.dataset.cid,10), value:v.split(",").map(function(s){return s.trim();}).filter(Boolean) });
+  });
+  return out;
+}
+
+function addRow(){
+  var tr=document.createElement("tr");
+  tr.innerHTML='<td><input type="text" class="c-vc" autocomplete="off"></td>'
+    +'<td><input type="text" class="c-title" autocomplete="off"></td>'
+    +'<td><textarea class="c-desc"></textarea></td>'
+    +'<td><input type="text" class="c-bar" autocomplete="off"></td>'
+    +'<td><button class="del-row" type="button">×</button></td>';
+  tr.querySelector(".del-row").addEventListener("click",function(){ tr.remove(); });
+  $("createBody").appendChild(tr);
+}
+$("addRowBtn").addEventListener("click",function(){ addRow(); fit(); });
+for(var i=0;i<3;i++) addRow();
+
+$("genBarcodesBtn").addEventListener("click",async function(){
+  var rows=$("createBody").querySelectorAll("tr");
+  var empties=[]; rows.forEach(function(r){ var b=r.querySelector(".c-bar"); if(!b.value.trim()) empties.push(b); });
+  if(empties.length===0){ alert("Все строки уже с баркодами"); return; }
+  spinOn($("genBarcodesBtn"),true,"…");
+  try{
+    var j=await api("/api/wb/barcodes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({count:empties.length})});
+    if(!j.ok||!j.barcodes){ alert("Ошибка: "+(j.error||"")); return; }
+    empties.forEach(function(b,i){ if(j.barcodes[i]) b.value=j.barcodes[i]; });
+  }catch(e){ alert("Ошибка генерации"); }
+  finally{ spinOn($("genBarcodesBtn"),false,"Сгенерировать баркоды"); }
+});
+
+$("createBtn").addEventListener("click",async function(){
+  var sid=parseInt($("createSubj").value,10);
+  if(!sid){ showStatus($("createStatus"),false,"Выберите категорию"); return; }
+  var brand=$("cBrand").value.trim();
+  var dims={length:num("cLen"),width:num("cWid"),height:num("cHei"),weightBrutto:num("cWei")};
+  var price=num("cPrice"); var size=$("cSize").value.trim()||"0";
+  var charcs=collectCharcs();
+  var items=[];
+  var bad=false;
+  $("createBody").querySelectorAll("tr").forEach(function(r){
+    var vc=r.querySelector(".c-vc").value.trim();
+    var title=r.querySelector(".c-title").value.trim();
+    var desc=r.querySelector(".c-desc").value.trim();
+    var bar=r.querySelector(".c-bar").value.trim();
+    if(!vc&&!title) return;            // пустая строка — пропускаем
+    if(!vc||!title){ bad=true; return; }
+    items.push({ subjectID:sid, variants:[{
+      brand:brand, title:title, description:desc, vendorCode:vc,
+      dimensions:dims, characteristics:charcs,
+      sizes:[{ techSize:size, wbSize:size, price:price, skus: bar?[bar]:[] }]
+    }]});
+  });
+  if(bad){ showStatus($("createStatus"),false,"В некоторых строках не заполнены Артикул или Название"); return; }
+  if(items.length===0){ showStatus($("createStatus"),false,"Добавьте хотя бы одну карточку"); return; }
+
+  spinOn($("createBtn"),true,"Создаю на WB…");
+  try{
+    var j=await api("/api/wb/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:items})});
+    if(j.ok) showStatus($("createStatus"),true,"Отправлено на создание карточек: "+j.created+". Проверьте статус в кабинете WB через 1–2 минуты.");
+    else showStatus($("createStatus"),false,j.error||"Ошибка создания");
+  }catch(e){ showStatus($("createStatus"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("createBtn"),false,"Создать карточки на WB"); }
+});
+
+function num(id){ var v=parseFloat($(id).value); return isNaN(v)?0:v; }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(ch){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[ch];}); }
+
+/* тема */
+(function(){
+  var root=document.documentElement,btn=$("theme-toggle");
+  function sync(){ btn.textContent=root.getAttribute("data-theme")==="dark"?"☀":"☾"; }
+  btn.addEventListener("click",function(){ root.setAttribute("data-theme",root.getAttribute("data-theme")==="dark"?"light":"dark"); sync(); });
+  sync();
+})();
+
+updateFieldUI();
+window.addEventListener("load",fit);
+</script>
+</body>
+</html>
