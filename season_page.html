@@ -96,6 +96,14 @@ tbody tr:hover{ background:var(--surface-2); }
 .demo-badge{ display:none; font-family:var(--mono); font-size:11px; color:var(--ink-2);
   background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:4px 10px; margin-left:10px; }
 .demo-badge.show{ display:inline-block; }
+.caret{ display:inline-block; width:12px; color:var(--ink-3); font-size:11px; transition:transform .1s; }
+tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
+.szwrap{ display:flex; flex-wrap:wrap; gap:8px; }
+.szchip{ font-size:12px; padding:5px 10px; border-radius:8px; border:1px solid var(--line); background:var(--surface); white-space:nowrap; }
+.szchip.stuck{ border-color:color-mix(in srgb,var(--bad) 45%,var(--line)); background:color-mix(in srgb,var(--bad) 10%,transparent); }
+.szchip.empty{ color:var(--ink-3); }
+.szchip b{ color:var(--accent-deep); }
+[data-theme="dark"] .szchip b{ color:var(--accent); }
 </style>
 </head>
 <body>
@@ -143,6 +151,18 @@ tbody tr:hover{ background:var(--surface-2); }
   <div id="report" hidden>
     <div class="verdict"><div class="vh">Вывод и план</div><div id="verdict"></div></div>
     <div class="kpis" id="kpis"></div>
+
+    <div id="sizeblock" hidden>
+      <div class="vh" style="font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:var(--ink-3);margin:6px 2px 10px">Аналитика по размерам — где залёживается</div>
+      <div class="tablewrap" style="margin-bottom:22px">
+        <table style="min-width:560px">
+          <thead><tr>
+            <th>Размер</th><th>Остаток</th><th>Продаж/день</th><th>Хватит до</th><th>Остаток к концу сезона</th><th>Статус</th>
+          </tr></thead>
+          <tbody id="sizetbody"></tbody>
+        </table>
+      </div>
+    </div>
 
     <div id="scenblock" hidden>
       <div class="vh" style="font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:var(--ink-3);margin:6px 2px 10px">Сценарии по цене — если снизить цену (поднять скидку)</div>
@@ -212,12 +232,31 @@ function render(rep){
     kpi("Нужно продавать", s.requiredDaily+" шт/день", "чтобы осталось ≤"+rep.targetRemainPct+"% ("+fmt(s.targetLeftUnits)+" шт)") +
     kpi("Прогноз неликвида", fmt(s.deadstock)+" шт", "при текущем темпе останется "+s.projLeftPct+"%", s.deadstock>0?"down":"up") +
     kpi("Скидка", s.recommendedDiscount+"%", "сейчас ~"+s.currentDiscount+"% · рекомендуем");
+  // аналитика по размерам (по категории)
+  var sizes=s.sizes||[];
+  var ztb=$("sizetbody"); ztb.innerHTML="";
+  sizes.forEach(function(z){
+    var st=STATUS[z.status]||["—","empty"];
+    var tr=document.createElement("tr");
+    tr.innerHTML=
+      '<td><b>'+z.size+'</b></td>'+
+      '<td>'+fmt(z.stock)+'</td>'+
+      '<td>'+z.dailyRate+'</td>'+
+      '<td>'+(z.daysOfSupply==null?'<span class="sub">∞</span>':z.daysOfSupply+" дн")+'</td>'+
+      '<td>'+z.projLeftPct+'%</td>'+
+      '<td><span class="pill '+st[1]+'">'+st[0]+'</span></td>';
+    ztb.appendChild(tr);
+  });
+  $("sizeblock").hidden = sizes.length===0;
+
   var tb=$("tbody"); tb.innerHTML="";
   (rep.rows||[]).forEach(function(r){
     var st=STATUS[r.status]||["—","empty"];
+    var hasSizes=(r.sizes||[]).length>0;
     var tr=document.createElement("tr");
+    if(hasSizes){ tr.style.cursor="pointer"; }
     tr.innerHTML =
-      '<td><span class="art">'+(r.vendorCode||r.nmId||"—")+'</span>'+(r.subject?'<br><span class="sub">'+r.subject+(r.size&&r.size!=="0"?" · "+r.size:"")+'</span>':"")+'</td>'+
+      '<td>'+(hasSizes?'<span class="caret">▸</span> ':"")+'<span class="art">'+(r.vendorCode||r.nmId||"—")+'</span>'+(r.subject?'<br><span class="sub">'+r.subject+'</span>':"")+'</td>'+
       '<td>'+fmt(r.stock)+'</td>'+
       '<td>'+r.dailyRate+'</td>'+
       '<td>'+trendHtml(r.trendPct)+'</td>'+
@@ -228,6 +267,21 @@ function render(rep){
       '<td>'+discHtml(r.currentDiscount,r.recommendedDiscount)+'</td>'+
       '<td><span class="pill '+st[1]+'">'+st[0]+'</span></td>';
     tb.appendChild(tr);
+    if(hasSizes){
+      var det=document.createElement("tr");
+      det.className="sizedetail"; det.hidden=true;
+      var chips=r.sizes.map(function(z){
+        var cls=z.status==="stuck"?"stuck":(z.status==="empty"?"empty":"ok");
+        return '<span class="szchip '+cls+'"><b>'+z.size+'</b> '+fmt(z.stock)+' шт · '+z.dailyRate+'/д · ост '+z.projLeftPct+'%'+(z.status==="stuck"&&z.stock>0?' ⚠️':'')+'</span>';
+      }).join("");
+      det.innerHTML='<td colspan="10"><div class="szwrap">'+chips+'</div></td>';
+      tb.appendChild(det);
+      tr.addEventListener("click",function(){
+        det.hidden=!det.hidden;
+        var c=tr.querySelector(".caret"); if(c) c.textContent=det.hidden?"▸":"▾";
+        fit();
+      });
+    }
   });
   // сценарии по цене
   var scen=(s.scenarios||[]).filter(function(c){return c.addDiscount>0;});
@@ -259,6 +313,22 @@ function demoReport(p){
     ["J10003/navy","Шорты",150,3.6,30],["J10004/beige","Шорты",90,0.0,7],["J10005/olive","Шорты",310,1.2,20]];
   var today=new Date(); var end=new Date(p.seasonEnd); var daysLeft=Math.max(1,Math.round((end-today)/864e5));
   var tgt=parseFloat(p.targetPct)/100; var rows=[], tot=0,sold=0,dead=0;
+  var SZ=["S","M","L","XL"], szTot={};
+  function mkSizes(stock,daily){
+    // распределяем остаток/продажи по размерам (XL «залёживается»)
+    var w=[0.2,0.35,0.3,0.15], ws=[0.15,0.5,0.33,0.02], out=[];
+    SZ.forEach(function(z,i){
+      var sStock=Math.round(stock*w[i]), sDaily=Math.round(daily*ws[i]*100)/100;
+      var sProj=Math.max(0,sStock-sDaily*daysLeft);
+      var sDos=sDaily>0?Math.round(sStock/sDaily):null;
+      var sStat=sStock<=0?"empty":(sDaily<=0?"stuck":"ok");
+      out.push({size:z,stock:sStock,soldRecent:Math.round(sDaily*28),dailyRate:sDaily,daysOfSupply:sDos,
+        projLeftPct:sStock?Math.round(sProj/sStock*1000)/10:0,status:sStat});
+      szTot[z]=szTot[z]||{stock:0,recent:0,proj:0};
+      szTot[z].stock+=sStock; szTot[z].recent+=Math.round(sDaily*28); szTot[z].proj+=sProj;
+    });
+    return out;
+  }
   arts.forEach(function(a){
     var stock=a[2], daily=a[3], cur=a[4];
     var proj=Math.max(0,Math.round(stock-daily*daysLeft));
@@ -271,7 +341,7 @@ function demoReport(p){
     rows.push({vendorCode:a[0],subject:a[1],size:"M",stock:stock,dailyRate:daily,trendPct:[ -12,8,24,0,-5][rows.length],
       daysOfSupply:dos,depletionDate:dos?new Date(today.getTime()+dos*864e5).toISOString():null,
       projLeft:proj,projLeftPct:stock?Math.round(proj/stock*1000)/10:0,requiredDaily:Math.round(req*100)/100,
-      deadstock:ds,currentDiscount:cur,recommendedDiscount:rec,status:status});
+      deadstock:ds,currentDiscount:cur,recommendedDiscount:rec,status:status,sizes:mkSizes(stock,daily)});
     tot+=stock; sold+=Math.round(daily*p.lookback||daily*28); dead+=ds;
   });
   var curDaily=rows.reduce(function(s,r){return s+r.dailyRate;},0);
@@ -286,11 +356,14 @@ function demoReport(p){
       selloutDate:new Date(today.getTime()+dtt*864e5).toISOString(),
       projLeftPct:tot?Math.round(pl/tot*1000)/10:0,hitsTarget:dtt<=daysLeft});
   });
+  var sizeSum=SZ.map(function(z){var d=szTot[z]||{stock:0,recent:0,proj:0};var sd=Math.round(d.recent/28*100)/100;
+    return {size:z,stock:d.stock,soldRecent:d.recent,dailyRate:sd,daysOfSupply:sd>0?Math.round(d.stock/sd):null,
+      projLeftPct:d.stock?Math.round(d.proj/d.stock*1000)/10:0,status:d.stock<=0?"empty":(sd<=0?"stuck":"ok")};});
   return {title:"Шорты (демо)",seasonEnd:p.seasonEnd,daysLeft:daysLeft,lookbackDays:parseInt(p.lookback)||28,
     targetRemainPct:parseFloat(p.targetPct),generatedAt:"демо",
     summary:{totalStock:tot,soldRecent:sold,currentDaily:Math.round(curDaily*100)/100,trendPct:6.4,
       daysOfSupply:Math.round(tot/curDaily),depletionDate:new Date(today.getTime()+tot/curDaily*864e5).toISOString(),
-      requiredDaily:Math.round(req*100)/100,projLeft:proj,projLeftPct:Math.round(proj/tot*1000)/10,scenarios:scen,
+      requiredDaily:Math.round(req*100)/100,projLeft:proj,projLeftPct:Math.round(proj/tot*1000)/10,scenarios:scen,sizes:sizeSum,
       targetLeftUnits:Math.round(tot*tgt),deadstock:Math.max(0,Math.round(proj-tot*tgt)),currentDiscount:13,recommendedDiscount:38,
       verdict:"Не успеваем: сейчас "+(Math.round(curDaily*10)/10)+" шт/день, чтобы к "+p.seasonEnd+" осталось ≤"+p.targetPct+"% нужно "+(Math.round(req*10)/10)+" шт/день. Иначе в неликвид ляжет ~"+Math.max(0,Math.round(proj-tot*tgt))+" шт. Рекомендуемая средняя скидка ~38%. (демо-данные)"},
     rows:rows,count:rows.length};

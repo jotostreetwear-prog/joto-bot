@@ -1315,8 +1315,14 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     orders = fetch_wb_orders(start_prev.strftime("%Y-%m-%d"))
     stocks = fetch_wb_stocks()
 
-    # --- заказы по nmId: последнее окно и предыдущее (для динамики) ---
+    def _norm_size(v):
+        sz = str(v or "").strip()
+        return sz if sz and sz != "0" else "б/р"
+
+    # --- заказы по nmId (+ по размерам): последнее окно и предыдущее (для динамики) ---
     recent, prev = {}, {}
+    recent_size, prev_size = {}, {}   # nm -> {size -> кол-во}
+    cat_size = {}                     # size -> {"recent":n, "prev":n, "stock":q}
     for o in orders:
         if not _match_seasonal(o, category_code, keywords):
             continue
@@ -1326,13 +1332,20 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         if not d:
             continue
         nm = o.get("nmId")
+        sz = _norm_size(o.get("techSize"))
+        cat_size.setdefault(sz, {"recent": 0, "prev": 0, "stock": 0})
         if d >= start_recent:
             recent[nm] = recent.get(nm, 0) + 1
+            recent_size.setdefault(nm, {})[sz] = recent_size.setdefault(nm, {}).get(sz, 0) + 1
+            cat_size[sz]["recent"] += 1
         elif d >= start_prev:
             prev[nm] = prev.get(nm, 0) + 1
+            prev_size.setdefault(nm, {})[sz] = prev_size.setdefault(nm, {}).get(sz, 0) + 1
+            cat_size[sz]["prev"] += 1
 
-    # --- остатки по nmId (сумма по складам) + мета ---
+    # --- остатки по nmId (+ по размерам, сумма по складам) + мета ---
     stock_by_nm, meta_by_nm = {}, {}
+    stock_nm_size = {}   # nm -> {size -> остаток}
     for s in stocks:
         if not _match_seasonal(s, category_code, keywords):
             continue
@@ -1340,7 +1353,11 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         qty = s.get("quantityFull")
         if qty is None:
             qty = (s.get("quantity") or 0) + (s.get("inWayToClient") or 0)
-        stock_by_nm[nm] = stock_by_nm.get(nm, 0) + (qty or 0)
+        qty = qty or 0
+        sz = _norm_size(s.get("techSize"))
+        stock_by_nm[nm] = stock_by_nm.get(nm, 0) + qty
+        stock_nm_size.setdefault(nm, {})[sz] = stock_nm_size.setdefault(nm, {}).get(sz, 0) + qty
+        cat_size.setdefault(sz, {"recent": 0, "prev": 0, "stock": 0})["stock"] += qty
         if nm not in meta_by_nm:
             meta_by_nm[nm] = {
                 "vendorCode": s.get("supplierArticle"),
@@ -1396,6 +1413,24 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         else:
             status = "ok"  # текущего темпа хватает
 
+        # разбивка по размерам внутри артикула
+        size_rows = []
+        sizes_seen = set(stock_nm_size.get(nm, {})) | set(recent_size.get(nm, {}))
+        for sz in sizes_seen:
+            s_stock = stock_nm_size.get(nm, {}).get(sz, 0)
+            s_recent = recent_size.get(nm, {}).get(sz, 0)
+            s_daily = s_recent / win
+            s_dos = int(round(s_stock / s_daily)) if s_daily > 0 else None
+            s_proj_left = max(0.0, s_stock - s_daily * days_left)
+            s_pct = round(s_proj_left / s_stock * 100, 1) if s_stock > 0 else 0.0
+            s_status = "empty" if s_stock <= 0 else ("stuck" if s_daily <= 0 else "ok")
+            size_rows.append({
+                "size": sz, "stock": int(s_stock), "soldRecent": s_recent,
+                "dailyRate": round(s_daily, 2), "daysOfSupply": s_dos,
+                "projLeftPct": s_pct, "status": s_status,
+            })
+        size_rows.sort(key=lambda x: x["stock"], reverse=True)
+
         rows.append({
             "nmId": nm,
             "vendorCode": meta.get("vendorCode"),
@@ -1415,6 +1450,7 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             "currentDiscount": int(cur_disc),
             "recommendedDiscount": int(rec_disc),
             "status": status,
+            "sizes": size_rows,
         })
 
     rows.sort(key=lambda r: (r["deadstock"], r["stock"]), reverse=True)
@@ -1491,6 +1527,35 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
                 "hitsTarget": days_to_target <= days_left, # успеваем ли к концу сезона
             })
 
+    # --- аналитика по размерам (по всей категории) ---
+    _SIZE_ORDER = {"XXS": 0, "XS": 1, "S": 2, "M": 3, "L": 4, "XL": 5,
+                   "XXL": 6, "2XL": 6, "XXXL": 7, "3XL": 7, "4XL": 8}
+
+    def _size_key(sz):
+        u = str(sz).upper()
+        if u in _SIZE_ORDER:
+            return (0, _SIZE_ORDER[u], 0.0)
+        try:
+            return (1, 0, float(u.replace(",", ".")))
+        except Exception:
+            return (2, 0, 0.0)
+
+    size_summary = []
+    for sz, d in cat_size.items():
+        st = d.get("stock", 0)
+        rc = d.get("recent", 0)
+        s_daily = rc / win
+        s_dos = int(round(st / s_daily)) if s_daily > 0 else None
+        s_proj = max(0.0, st - s_daily * days_left)
+        s_pct = round(s_proj / st * 100, 1) if st > 0 else 0.0
+        s_status = "empty" if st <= 0 else ("stuck" if s_daily <= 0 else "ok")
+        size_summary.append({
+            "size": sz, "stock": int(st), "soldRecent": rc,
+            "dailyRate": round(s_daily, 2), "daysOfSupply": s_dos,
+            "projLeftPct": s_pct, "status": s_status,
+        })
+    size_summary.sort(key=lambda x: _size_key(x["size"]))
+
     return {
         "title": title,
         "categoryCode": category_code,
@@ -1515,6 +1580,7 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             "currentDiscount": round(avg_disc, 1),
             "recommendedDiscount": rec_disc_total,
             "scenarios": scenarios,
+            "sizes": size_summary,
             "verdict": verdict,
         },
         "rows": rows,
@@ -1593,6 +1659,15 @@ def build_seasonal_report_message(rep):
         for r in risky:
             disc = f"{r['currentDiscount']}%→{r['recommendedDiscount']}%" if r['recommendedDiscount'] != r['currentDiscount'] else f"{r['currentDiscount']}%"
             lines.append(f"• {r.get('vendorCode') or r.get('nmId')} — остаток {r['stock']}, {r['dailyRate']}/день, в неликвид {r['deadstock']} шт, скидка {disc}")
+
+    # Аналитика по размерам — где залёживается
+    sizes = s.get("sizes", [])
+    if sizes:
+        lines.append("")
+        lines.append("📐 *По размерам* (остаток · продаж/день · останется к концу сезона):")
+        for z in sizes:
+            flag = " ⚠️" if z["status"] == "stuck" and z["stock"] > 0 else ""
+            lines.append(f"• {z['size']}: {z['stock']} шт · {z['dailyRate']}/день · ~{z['projLeftPct']}%{flag}")
 
     # Сценарии «что если поднять скидку» — прогноз темпа и срока распродажи
     scen = [c for c in s.get("scenarios", []) if c.get("addDiscount", 0) > 0]
