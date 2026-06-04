@@ -1566,6 +1566,57 @@ def season_report_now():
     threading.Thread(target=send_seasonal_report).start()
     return jsonify({"ok": True, "message": "Сезонный отчёт отправляется в отдел продаж"})
 
+@app.route("/season-report-debug", methods=["GET"])
+def season_report_debug():
+    """Синхронная диагностика: показывает, где обрывается путь отчёта в чат."""
+    out = {
+        "wb_token_set": bool(WB_API_TOKEN),
+        "dialog": SALES_DEPT_DIALOG,
+        "category": SEASON_REPORT_CATEGORY,
+        "season_end": SEASON_END_DATE,
+    }
+    # 1) Доступ к статистике WB
+    try:
+        stocks = fetch_wb_stocks()
+        out["wb_stocks_total"] = len(stocks)
+    except Exception as e:
+        out["step"] = "wb_stocks_failed"
+        out["error"] = str(e)[:400]
+        return jsonify(out)
+    # 2) Построение отчёта по шортам
+    try:
+        rep = build_seasonal_report(category_code=SEASON_REPORT_CATEGORY, season_end=SEASON_END_DATE)
+        out["shorts_positions"] = rep.get("count", 0)
+        out["shorts_total_stock"] = rep["summary"]["totalStock"]
+        out["shorts_sold_recent"] = rep["summary"]["soldRecent"]
+    except Exception as e:
+        out["step"] = "build_report_failed"
+        out["error"] = str(e)[:400]
+        return jsonify(out)
+    # 3) Состояние OAuth/бота Битрикса
+    st = load_oauth() or {}
+    out["oauth_present"] = bool(st.get("access_token"))
+    out["bot_id"] = st.get("bot_id")
+    out["bitrix_domain"] = st.get("domain")
+    if not st.get("access_token"):
+        out["step"] = "bitrix_oauth_missing"
+        out["error"] = "Приложение Битрикса не установлено или токен не сохранён — некому слать сообщение."
+        return jsonify(out)
+    # 4) Реальная отправка в чат (ошибку показываем, а не глотаем)
+    try:
+        params = {"DIALOG_ID": SALES_DEPT_DIALOG, "MESSAGE": build_seasonal_report_message(rep)}
+        if st.get("bot_id"):
+            params["BOT_ID"] = st["bot_id"]
+        res = bx_call("imbot.message.add", params)
+        out["step"] = "sent"
+        out["sent"] = True
+        out["message_id"] = res
+    except Exception as e:
+        out["step"] = "send_failed"
+        out["sent"] = False
+        out["error"] = str(e)[:500]
+    return jsonify(out)
+
 # ===================== НАЦИОНАЛЬНЫЙ КАТАЛОГ (ЧЕСТНЫЙ ЗНАК): ГТИНЫ =====================
 # Каркас Варианта Б: создать товары в НК → получить ГТИНы → подставить в карточки WB.
 
