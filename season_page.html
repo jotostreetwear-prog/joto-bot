@@ -105,6 +105,10 @@ tbody tr:hover{ background:var(--surface-2); }
 .recprice{ color:var(--accent-deep); white-space:nowrap; }
 [data-theme="dark"] .recprice{ color:var(--accent); }
 tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
+.sizemini{ width:100%; border-collapse:collapse; font-size:12.5px; }
+.sizemini th{ text-align:left; font-weight:600; color:var(--ink-3); padding:4px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+.sizemini td{ padding:5px 8px; border-bottom:1px solid var(--line); background:transparent; }
+.sizemini tr:last-child td{ border-bottom:none; }
 .szwrap{ display:flex; flex-wrap:wrap; gap:8px; }
 .szchip{ font-size:12px; padding:5px 10px; border-radius:8px; border:1px solid var(--line); background:var(--surface); white-space:nowrap; }
 .szchip.stuck{ border-color:color-mix(in srgb,var(--bad) 45%,var(--line)); background:color-mix(in srgb,var(--bad) 10%,transparent); }
@@ -159,7 +163,6 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
     </div>
     <button class="btn" id="run" type="button"><span class="spinner"></span><span class="lbl">Сформировать</span></button>
     <button class="btn alt" id="send" type="button" disabled><span class="spinner"></span><span class="lbl">Отправить в отдел продаж</span></button>
-    <a class="btn alt" id="dlprices" href="/api/wb/price-list.xlsx">⬇️ Скачать цены (Excel)</a>
     <span class="demo-badge" id="demo">демо-данные · WB-токен не подключён</span>
   </div>
   <p class="note" id="note"></p>
@@ -194,7 +197,7 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
     <div class="tablewrap">
       <table>
         <thead><tr>
-          <th>Артикул</th><th>Нач. остаток<br><span class="sub">факт</span></th><th>Остаток</th><th>Заказов/день</th><th>Динамика</th>
+          <th>Товар</th><th>Артикул</th><th>Нач. остаток<br><span class="sub">факт</span></th><th>Остаток</th><th>Заказов/день</th><th>Динамика</th>
           <th>Хватит до</th><th>Прогноз остатка</th><th>Нужно/день</th>
           <th>В неликвид</th><th>Скидка</th><th>Цена сейчас ₽</th><th>Реком. цена ₽<br><span class="sub">под темп</span></th><th>Мин. цена ₽<br><span class="sub">по марже</span></th><th>Статус</th>
         </tr></thead>
@@ -246,6 +249,28 @@ function priceHtml(cur,rec){ if(cur==null) return '<span class="sub">—</span>'
   if(rec==null||rec===cur) return '<b>'+fmt(cur)+'</b> ₽';
   return '<span class="sub" style="text-decoration:line-through">'+fmt(cur)+'</span> <b>'+fmt(rec)+'</b> ₽'; }
 function priceCell(v){ return (v==null)?'<span class="sub">—</span>':(fmt(v)+' ₽'); }
+// мини-таблица «по размерам» внутри артикула
+function sizeMiniTable(sizes){
+  var head='<tr><th>Размер</th><th>Нач. остаток</th><th>Остаток</th><th>Ушло</th><th>Заказов/день</th>'+
+    '<th>Останется</th><th>Скидка</th><th>Цена сейчас ₽</th><th>Реком. цена ₽</th><th>Мин. цена ₽</th><th>Статус</th></tr>';
+  var rows=(sizes||[]).map(function(z){
+    var st=STATUS[z.status]||["—","empty"];
+    return '<tr>'+
+      '<td><b>'+z.size+'</b></td>'+
+      '<td>'+initHtml(z.initialStock,null)+'</td>'+
+      '<td>'+fmt(z.stock)+'</td>'+
+      '<td>'+(z.soldSinceStart!=null?fmt(z.soldSinceStart):'<span class="sub">—</span>')+'</td>'+
+      '<td>'+z.dailyRate+'</td>'+
+      '<td>'+z.projLeftPct+'%</td>'+
+      '<td>'+discHtml(z.currentDiscount,z.recommendedDiscount)+'</td>'+
+      '<td>'+priceCell(z.currentPrice)+'</td>'+
+      '<td>'+recPriceCell(z.recommendedPrice)+'</td>'+
+      '<td>'+minPriceCell(z.minPrice)+'</td>'+
+      '<td><span class="pill '+st[1]+'">'+st[0]+'</span></td>'+
+    '</tr>';
+  }).join("");
+  return '<table class="sizemini">'+head+rows+'</table>';
+}
 function recPriceCell(v){ return (v==null)?'<span class="sub">—</span>':('<b class="recprice">'+fmt(v)+' ₽</b>'); }
 function minPriceCell(v){ return (v==null)?'<span class="sub">—</span>':('<span class="sub">'+fmt(v)+' ₽</span>'); }
 var STATUS={ok:["В графике","ok"],accelerate:["Ускорить","accelerate"],stuck:["Стоит","stuck"],empty:["Нет остатка","empty"]};
@@ -304,7 +329,8 @@ function render(rep){
     var tr=document.createElement("tr");
     if(hasSizes){ tr.style.cursor="pointer"; }
     tr.innerHTML =
-      '<td><div class="artcell">'+(hasSizes?'<span class="caret">▸</span>':"")+thumb(r.nmId)+'<div><span class="art">'+(r.vendorCode||r.nmId||"—")+'</span>'+(r.subject?'<br><span class="sub">'+r.subject+'</span>':"")+'</div></div></td>'+
+      '<td><div class="artcell">'+(hasSizes?'<span class="caret">▸</span>':"")+thumb(r.nmId)+(r.subject?'<span class="sub">'+r.subject+'</span>':"")+'</div></td>'+
+      '<td><span class="art">'+(r.vendorCode||r.nmId||"—")+'</span></td>'+
       '<td>'+initHtml(r.initialStock,r.soldSinceStart)+'</td>'+
       '<td>'+fmt(r.stock)+'</td>'+
       '<td>'+r.dailyRate+'</td>'+
@@ -322,12 +348,7 @@ function render(rep){
     if(hasSizes){
       var det=document.createElement("tr");
       det.className="sizedetail"; det.hidden=true;
-      var chips=r.sizes.map(function(z){
-        var cls=z.status==="stuck"?"stuck":(z.status==="empty"?"empty":"ok");
-        var d=(z.recommendedDiscount!=null&&z.recommendedDiscount!==z.currentDiscount)?(' · скидка '+z.currentDiscount+'%→'+z.recommendedDiscount+'%'):(z.currentDiscount!=null?(' · скидка '+z.currentDiscount+'%'):'');
-        return '<span class="szchip '+cls+'"><b>'+z.size+'</b> '+fmt(z.stock)+' шт · '+z.dailyRate+'/д · ост '+z.projLeftPct+'%'+d+(z.status==="stuck"&&z.stock>0?' ⚠️':'')+'</span>';
-      }).join("");
-      det.innerHTML='<td colspan="14"><div class="szwrap">'+chips+'</div></td>';
+      det.innerHTML='<td colspan="15">'+sizeMiniTable(r.sizes)+'</td>';
       tb.appendChild(det);
       tr.addEventListener("click",function(){
         det.hidden=!det.hidden;
