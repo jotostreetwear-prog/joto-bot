@@ -307,7 +307,7 @@ function paintSummary(s, sizes, rep, row){
     kpi("Остаток на складе", fmt(s.totalStock)+" шт", "за "+rep.lookbackDays+" дн"+(rep.periodStart?(" · "+fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)):"")+": заказов "+fmt(s.soldRecent)+(s.salesRecent!=null?(", продаж "+fmt(s.salesRecent)):"")+" шт") +
     buy +
     kpi("Темп продаж", s.currentDaily+" шт/день", "динамика к пред. периоду", trendCls, trendHtml(s.trendPct)) +
-    kpi("Хватит остатка", (s.daysOfSupply==null?"∞":s.daysOfSupply+" дн"), s.depletionDate?("обнулится "+fmtDate(s.depletionDate)):"при текущем темпе") +
+    kpi("Хватит остатка", (s.daysOfSupply==null?"∞":s.daysOfSupply+" дн"), (s.depletionDate?("обнулится "+fmtDate(s.depletionDate)):"при текущем темпе")+(s.buyoutPct!=null?" · с учётом выкупа "+s.buyoutPct+"%":"")) +
     kpi("До конца сезона", rep.daysLeft+" дн", "до "+fmtDate(rep.seasonEnd)) +
     kpi("Распродать к сезону", fmt(s.needSell)+" шт", "темп "+s.requiredDaily+"/день · цель ≤"+rep.targetRemainPct+"% "+(s.targetFromInitial?"от нач. остатка":"от текущего")+" ("+fmt(s.targetLeftUnits)+" шт)") +
     kpi("Прогноз неликвида", fmt(s.deadstock)+" шт", "при текущем темпе останется "+s.projLeftPct+"%", s.deadstock>0?"down":"up") +
@@ -453,7 +453,7 @@ function render(rep){
   });
   $("methodology").innerHTML = "ⓘ Источник: WB Статистика. Темп = заказы после отмён за период "+
     fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)+" ("+rep.lookbackDays+" дн), они же списывают остаток. "+
-    "Остаток = quantityFull по всем складам на сейчас. Цена — из WB «Цены и скидки», мин. цена — предел по марже. "+
+    "Остаток = quantityFull по всем складам на сейчас. «Хватит до», прогноз остатка и неликвид считаются по чистому темпу (заказы × % выкупа) — возвраты возвращаются на склад. Цена — из WB «Цены и скидки», мин. цена — предел по марже. "+
     "Артикулов в категории: "+(rep.count!=null?rep.count:(rep.rows||[]).length)+"."+
     (s.pricesAvailable===false?" <b style='color:var(--bad)'>⚠️ Цены не загрузились — у WB-токена нет доступа к категории «Цены и скидки».</b>":"");
   $("empty").hidden = (rep.rows||[]).length>0;
@@ -507,15 +507,17 @@ function demoReport(p){
     });
     return out;
   }
+  var BF=0.88;  // демо-выкуп
   arts.forEach(function(a){
     var stock=a[2], daily=a[3], cur=a[4];
-    var proj=Math.max(0,Math.round(stock-daily*daysLeft));
+    var eff=daily*BF;  // чистый темп с учётом выкупа
+    var proj=Math.max(0,Math.round(stock-eff*daysLeft));
     var need=Math.max(0,stock*(1-tgt)), req=need/daysLeft;
     var ds=Math.max(0,Math.round(proj-stock*tgt));
     var rec=cur, status="ok";
-    if(daily<=0){status="stuck";rec=Math.min(maxDisc,Math.max(cur+30,40));}
-    else if(req>daily){status="accelerate";rec=Math.min(maxDisc,Math.round(cur+(req/daily-1)*100/2));}
-    var dos=daily>0?Math.round(stock/daily):null;
+    if(eff<=0){status="stuck";rec=Math.min(maxDisc,Math.max(cur+30,40));}
+    else if(req>eff){status="accelerate";rec=Math.min(maxDisc,Math.round(cur+(req/eff-1)*100/2));}
+    var dos=eff>0?Math.round(stock/eff):null;
     var initial=Math.round(stock*1.7), soldSince=initial-stock;
     var ordCnt=Math.round(daily*win), salCnt=Math.round(ordCnt*0.88);
     rows.push({vendorCode:a[0],subject:a[1],size:"M",nmId:200000000+rows.length,stock:stock,dailyRate:daily,trendPct:[ -12,8,24,0,-5][rows.length],
@@ -529,14 +531,15 @@ function demoReport(p){
     tot+=stock; sold+=Math.round(daily*win); dead+=ds; totInit+=initial;
   });
   var curDaily=rows.reduce(function(s,r){return s+r.dailyRate;},0);
-  var proj=Math.max(0,Math.round(tot-curDaily*daysLeft));
+  var effDaily=curDaily*BF;  // чистый темп с учётом выкупа
+  var proj=Math.max(0,Math.round(tot-effDaily*daysLeft));
   // цель ≤target% от НАЧАЛЬНОГО остатка
   var tgtUnits=Math.round(totInit*tgt);
   var need=Math.max(0,tot-tgtUnits), req=need/daysLeft;
-  var el=2, base=curDaily>0?need/curDaily:0, scen=[];
+  var el=2, base=effDaily>0?need/effDaily:0, scen=[];
   [0,5,10,15,20,30].forEach(function(d){
     if(d>0 && (13+d)>maxDisc) return;            // не глубже маржи
-    var nd=curDaily*(1+el*d/100); if(nd<=0) return;
+    var nd=effDaily*(1+el*d/100); if(nd<=0) return;
     var dtt=need/nd, pl=Math.max(0,tot-nd*daysLeft);
     scen.push({addDiscount:d,discount:Math.round(13+d),dailyRate:Math.round(nd*100)/100,
       daysToTarget:Math.round(dtt),daysSaved:Math.max(0,Math.round(base-dtt)),
@@ -555,7 +558,7 @@ function demoReport(p){
   return {title:"Шорты (демо)",seasonEnd:p.seasonEnd,daysLeft:daysLeft,lookbackDays:win,
     periodStart:pStart,periodEnd:pEnd,targetRemainPct:parseFloat(p.targetPct),generatedAt:"демо",
     summary:{totalStock:tot,initialStock:totInit,soldSinceStart:Math.max(0,totInit-tot),soldRecent:sold,salesRecent:Math.round(sold*0.88),buyoutPct:88,currentDaily:Math.round(curDaily*100)/100,trendPct:6.4,
-      daysOfSupply:Math.round(tot/curDaily),depletionDate:new Date(today.getTime()+tot/curDaily*864e5).toISOString(),
+      daysOfSupply:Math.round(tot/effDaily),depletionDate:new Date(today.getTime()+tot/effDaily*864e5).toISOString(),
       requiredDaily:Math.round(req*100)/100,needSell:need,targetFromInitial:true,projLeft:proj,projLeftPct:Math.round(proj/tot*1000)/10,scenarios:scen,sizes:sizeSum,
       maxDiscountByMargin:maxDisc,marginLimited:38>maxDisc,costSharePct:Math.round(cs*100),minMarginPct:Math.round(mm*100),
       targetLeftUnits:tgtUnits,deadstock:dead,currentDiscount:13,recommendedDiscount:recTot,
