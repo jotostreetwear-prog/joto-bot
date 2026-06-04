@@ -173,7 +173,7 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
       <div class="tablewrap" style="margin-bottom:22px">
         <table style="min-width:560px">
           <thead><tr>
-            <th>Размер</th><th>Остаток</th><th>Продаж/день</th><th>Хватит до</th><th>Остаток к концу сезона</th><th>Скидка</th><th>Статус</th>
+            <th>Размер</th><th>Остаток</th><th>Заказов/день</th><th>Хватит до</th><th>Остаток к концу сезона</th><th>Скидка</th><th>Статус</th>
           </tr></thead>
           <tbody id="sizetbody"></tbody>
         </table>
@@ -194,7 +194,7 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
     <div class="tablewrap">
       <table>
         <thead><tr>
-          <th>Артикул</th><th>Остаток</th><th>Продаж/день</th><th>Динамика</th>
+          <th>Артикул</th><th>Остаток</th><th>Заказов/день</th><th>Динамика</th>
           <th>Хватит до</th><th>Прогноз остатка</th><th>Нужно/день</th>
           <th>В неликвид</th><th>Скидка</th><th>Статус</th>
         </tr></thead>
@@ -202,6 +202,7 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
       </table>
     </div>
     <p id="empty" hidden>Под выбранную категорию данных не нашлось. Проверь, что у токена есть доступ к «Статистике» и что в категории есть остатки.</p>
+    <p class="note" id="methodology"></p>
   </div>
 </div>
 
@@ -245,7 +246,7 @@ function render(rep){
   $("verdict").textContent = s.verdict;
   var trendCls = s.trendPct>0?"up":(s.trendPct<0?"down":"");
   $("kpis").innerHTML =
-    kpi("Остаток на складе", fmt(s.totalStock)+" шт", "продано за "+rep.lookbackDays+" дн"+(rep.periodStart?(" · "+fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)):"")+": "+fmt(s.soldRecent)+" шт") +
+    kpi("Остаток на складе", fmt(s.totalStock)+" шт", "заказов за "+rep.lookbackDays+" дн"+(rep.periodStart?(" · "+fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)):"")+": "+fmt(s.soldRecent)+" шт") +
     kpi("Темп продаж", s.currentDaily+" шт/день", "динамика к пред. периоду", trendCls, trendHtml(s.trendPct)) +
     kpi("Хватит остатка", (s.daysOfSupply==null?"∞":s.daysOfSupply+" дн"), s.depletionDate?("обнулится "+fmtDate(s.depletionDate)):"при текущем темпе") +
     kpi("До конца сезона", rep.daysLeft+" дн", "до "+fmtDate(rep.seasonEnd)) +
@@ -321,6 +322,9 @@ function render(rep){
     stb.appendChild(tr);
   });
   $("scenblock").hidden = scen.length===0;
+  $("methodology").innerHTML = "ⓘ Источник: WB Статистика. Темп = заказы после отмён за период "+
+    fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)+" ("+rep.lookbackDays+" дн), они же списывают остаток. "+
+    "Остаток = quantityFull по всем складам на сейчас. Артикулов в категории: "+(rep.count!=null?rep.count:(rep.rows||[]).length)+".";
   $("empty").hidden = (rep.rows||[]).length>0;
   $("report").hidden = false;
   sendBtn.disabled = false;
