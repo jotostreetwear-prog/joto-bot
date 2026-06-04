@@ -1347,16 +1347,18 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             return None
 
     # Окно анализа продаж: либо выбранный период (календарь), либо «последние N дней».
+    # Окно считаем включительно по обе границы, поэтому число дней = (end - start) + 1.
     ps, pe = _as_date(period_start), _as_date(period_end)
     if ps and pe and pe >= ps:
         rec_start, rec_end = ps, pe
-        win = max(1, (rec_end - rec_start).days)
+        win = max(1, (rec_end - rec_start).days + 1)
     else:
         rec_end = today
         win = max(1, int(lookback_days))
-        rec_start = rec_end - timedelta(days=win)
+        rec_start = rec_end - timedelta(days=win - 1)
     start_recent = rec_start
-    start_prev = rec_start - timedelta(days=win)  # предыдущее окно той же длины — для динамики
+    # предыдущее окно той же длины (для динамики): [start_prev, rec_start - 1 день]
+    start_prev = rec_start - timedelta(days=win)
 
     try:
         season_end_d = datetime.strptime(season_end, "%Y-%m-%d").date()
@@ -1757,7 +1759,7 @@ def build_seasonal_report_message(rep):
         f"📉 *Распродажа сезона — {rep['title']}*",
         f"Отчёт на {rep.get('generatedAt','')} · до конца сезона {rep['daysLeft']} дн (до {rep['seasonEnd']})",
         "",
-        f"📦 Остаток: *{s['totalStock']} шт* · продано за {rep['lookbackDays']} дн"
+        f"📦 Остаток: *{s['totalStock']} шт* · заказов за {rep['lookbackDays']} дн"
         + (f" ({_fmt_date_ru(rep['periodStart'])}–{_fmt_date_ru(rep['periodEnd'])})" if rep.get('periodStart') else "")
         + f": {s['soldRecent']} шт",
         f"⚡ Темп: *{s['currentDaily']} шт/день* (динамика {_trend_arrow(s['trendPct'])})",
@@ -1784,7 +1786,7 @@ def build_seasonal_report_message(rep):
     sizes = s.get("sizes", [])
     if sizes:
         lines.append("")
-        lines.append("📐 *По размерам* (остаток · продаж/день · останется · скидка):")
+        lines.append("📐 *По размерам* (остаток · заказов/день · останется · скидка):")
         for z in sizes:
             flag = " ⚠️" if z["status"] == "stuck" and z["stock"] > 0 else ""
             rec, cur = z.get("recommendedDiscount"), z.get("currentDiscount")
@@ -1808,6 +1810,12 @@ def build_seasonal_report_message(rep):
 
     lines.append("")
     lines.append(f"📊 Полная таблица: {season_url}")
+    lines.append(
+        "ⓘ Источник: WB Статистика. Темп = заказы после отмён за период "
+        f"{_fmt_date_ru(rep.get('periodStart'))}–{_fmt_date_ru(rep.get('periodEnd'))} "
+        f"({rep.get('lookbackDays')} дн), они же списывают остаток. "
+        "Остаток = quantityFull по всем складам на сейчас."
+    )
     return "\n".join(lines)
 
 def find_users_by_name(query):
