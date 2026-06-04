@@ -533,6 +533,31 @@ def register_left_menu():
                          "Отчёт по распродаже сезонных товаров (остатки, динамика, скидки)")
     return True
 
+def reset_left_menu():
+    """
+    Полная пересборка пунктов левого меню.
+    Сначала снимает ВСЕ привязки LEFT_MENU (в т.ч. «осиротевшие» после
+    переустановки приложения — они вызывают «Приложение не найдено»),
+    затем привязывает наши пункты заново.
+    """
+    removed = 0
+    try:
+        existing = bx_call("placement.get") or []
+        for pl in existing:
+            if isinstance(pl, dict) and pl.get("placement") == "LEFT_MENU":
+                handler = pl.get("handler")
+                if handler:
+                    try:
+                        bx_call("placement.unbind", {"PLACEMENT": "LEFT_MENU", "HANDLER": handler})
+                        removed += 1
+                    except Exception as e:
+                        print(f"[МЕНЮ] не удалось снять {handler}: {e}")
+    except Exception as e:
+        print(f"[МЕНЮ] placement.get недоступен: {e}")
+    print(f"[МЕНЮ] снято старых привязок LEFT_MENU: {removed}")
+    register_left_menu()
+    return removed
+
 # ===================== ДИАЛОГ: СОЗДАНИЕ АРТИКУЛА =====================
 
 def send_welcome(dialog_id, auth=None):
@@ -1785,8 +1810,8 @@ def admin_placement():
     if not BITRIX_CLIENT_SECRET or request.args.get("secret", "") != BITRIX_CLIENT_SECRET:
         return Response("forbidden", status=403)
     try:
-        register_left_menu()
-        return jsonify({"ok": True, "items": [
+        removed = reset_left_menu()
+        return jsonify({"ok": True, "removed_old": removed, "items": [
             {"handler": LEFT_MENU_HANDLER_URL, "title": LEFT_MENU_TITLE},
             {"handler": SEASON_MENU_HANDLER_URL, "title": SEASON_MENU_TITLE},
         ]})
