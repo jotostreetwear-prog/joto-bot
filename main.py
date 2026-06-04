@@ -36,6 +36,9 @@ SALES_DEPT_DIALOG = os.environ.get("SALES_DEPT_DIALOG", "").strip() or "chat2024
 # Категория для еженедельного авто-отчёта по сезонной распродаже и конец сезона
 SEASON_REPORT_CATEGORY = os.environ.get("SEASON_REPORT_CATEGORY", "10").strip()
 SEASON_END_DATE = os.environ.get("SEASON_END_DATE", "2026-08-31").strip()
+# Получатель отчёта по распродаже. Можно указать имя сотрудника (ищется в Битриксе),
+# ID пользователя (число) или чат (chatXXXX). По умолчанию — лично Татьяне.
+SEASON_REPORT_TO = os.environ.get("SEASON_REPORT_TO", "Татьяна").strip()
 
 def is_silent_dialog(dialog_id):
     """Чаты только для отчётов/алертов: бот туда пишет сам, но не приветствует
@@ -1557,15 +1560,51 @@ def build_seasonal_report_message(rep):
     lines.append(f"📊 Полная таблица: {season_url}")
     return "\n".join(lines)
 
+def find_users_by_name(query):
+    """Ищет сотрудников по имени/фамилии через user.get (FIND ищет по ФИО/почте)."""
+    q = (query or "").strip()
+    if not q:
+        return []
+    try:
+        res = bx_call("user.get", {"FIND": q, "ACTIVE": True})
+    except Exception as e:
+        print(f"find_users_by_name: {e}")
+        return []
+    matches = []
+    if isinstance(res, list):
+        for u in res:
+            uid = str(u.get("ID", "")).strip()
+            name = f"{u.get('NAME','')} {u.get('LAST_NAME','')}".strip()
+            if uid:
+                matches.append({"id": uid, "name": name or uid})
+    return matches
+
+def resolve_report_recipient(target=None):
+    """Превращает получателя в DIALOG_ID. Возвращает (dialog_id, matches).
+    Принимает chatXXXX / ID пользователя / имя сотрудника."""
+    t = (target if target is not None else SEASON_REPORT_TO or "").strip()
+    if not t:
+        return SALES_DEPT_DIALOG, None
+    if t.lower().startswith("chat") or t.isdigit():
+        return t, None
+    matches = find_users_by_name(t)
+    if matches:
+        return matches[0]["id"], matches
+    # имя не нашли — не молчим, шлём резервно на REPORT_USER_ID
+    return REPORT_USER_ID, []
+
 def send_seasonal_report(category_code=None, season_end=None, dialog_id=None):
-    """Строит отчёт по сезонной категории и шлёт его в чат отдела продаж."""
+    """Строит отчёт по сезонной категории и шлёт его получателю (по умолчанию — Татьяне)."""
     category_code = category_code or SEASON_REPORT_CATEGORY
     season_end = season_end or SEASON_END_DATE
-    dialog = dialog_id or SALES_DEPT_DIALOG
+    if dialog_id:
+        dialog = dialog_id
+    else:
+        dialog, _ = resolve_report_recipient()
     rep = build_seasonal_report(category_code=category_code, season_end=season_end)
     msg = build_seasonal_report_message(rep)
     send_b24_message(dialog, msg)
-    print(f"Сезонный отчёт отправлен в {dialog} (категория {category_code})")
+    print(f"Сезонный отчёт отправлен получателю {dialog} (категория {category_code})")
     return rep, dialog
 
 @app.route("/api/wb/season-report/send", methods=["POST"])
@@ -1573,7 +1612,9 @@ def api_wb_season_report_send():
     data = request.get_json(silent=True) or {}
     category = (data.get("category") or SEASON_REPORT_CATEGORY).strip()
     season_end = (data.get("seasonEnd") or SEASON_END_DATE).strip()
-    dialog = (data.get("dialog") or "").strip() or SALES_DEPT_DIALOG
+    dialog = (data.get("dialog") or "").strip()
+    if not dialog:
+        dialog, _ = resolve_report_recipient()
     try:
         try:
             target_pct = float(data.get("targetPct", 10))
@@ -1600,7 +1641,7 @@ def season_report_debug():
     """Синхронная диагностика: показывает, где обрывается путь отчёта в чат."""
     out = {
         "wb_token_set": bool(WB_API_TOKEN),
-        "dialog": SALES_DEPT_DIALOG,
+        "recipient_setting": SEASON_REPORT_TO,
         "category": SEASON_REPORT_CATEGORY,
         "season_end": SEASON_END_DATE,
     }
@@ -1631,9 +1672,14 @@ def season_report_debug():
         out["step"] = "bitrix_oauth_missing"
         out["error"] = "Приложение Битрикса не установлено или токен не сохранён — некому слать сообщение."
         return jsonify(out)
-    # 4) Реальная отправка в чат (ошибку показываем, а не глотаем)
+    # 4) Кому уходит отчёт (резолвим имя получателя в DIALOG_ID)
+    recipient, matches = resolve_report_recipient()
+    out["recipient_dialog"] = recipient
+    if matches is not None:
+        out["recipient_matches"] = matches
+    # 5) Реальная отправка (ошибку показываем, а не глотаем)
     try:
-        params = {"DIALOG_ID": SALES_DEPT_DIALOG, "MESSAGE": build_seasonal_report_message(rep)}
+        params = {"DIALOG_ID": recipient, "MESSAGE": build_seasonal_report_message(rep)}
         if st.get("bot_id"):
             params["BOT_ID"] = st["bot_id"]
         res = bx_call("imbot.message.add", params)
