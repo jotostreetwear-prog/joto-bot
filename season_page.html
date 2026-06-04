@@ -296,33 +296,16 @@ function params(){
   return p;
 }
 
-// Фильтр таблицы по конкретному артикулу (список вверху, справа от категории)
-function applyArtFilter(){
-  var v=$("artFilter").value, tb=$("tbody");
-  Array.prototype.forEach.call(tb.children,function(tr){
-    var a=tr.dataset.art||"";
-    tr.classList.toggle("filtered-out", !(!v || a===v));
-  });
-}
-function fillArtFilter(rows){
-  var sel=$("artFilter"), prev=sel.value, arts=[], seen={};
-  rows.forEach(function(r){ var a=r.vendorCode||""; if(a&&!seen[a]){seen[a]=1; arts.push(a);} });
-  sel.innerHTML='<option value="">Все артикулы ('+arts.length+')</option>'+
-    arts.map(function(a){return '<option value="'+a.replace(/"/g,"&quot;")+'">'+a+'</option>';}).join("");
-  if(prev&&seen[prev]) sel.value=prev;
-  sel.disabled = arts.length===0;
-  applyArtFilter();
-}
-
-function render(rep){
-  lastReport = rep;
-  $("catTitle").textContent = "— " + rep.title;
-  var s = rep.summary;
-  $("verdict").textContent = s.verdict;
+// Рисует сводку (KPI + вывод + таблица размеров). row!=null — режим одного артикула.
+function paintSummary(s, sizes, rep, row){
+  $("catTitle").textContent = "— " + rep.title + (row ? " · " + (row.vendorCode||"") : "");
+  $("verdict").textContent = s.verdict || "";
   var trendCls = s.trendPct>0?"up":(s.trendPct<0?"down":"");
+  var buy = (s.buyoutPct!=null) ? kpi("Выкуп", s.buyoutPct+"%", "продажи "+fmt(s.salesRecent)+" / заказы "+fmt(s.soldRecent)+" шт") : "";
   $("kpis").innerHTML =
     (s.initialStock!=null ? kpi("Начальный остаток", fmt(s.initialStock)+" шт", "факт приход · ушло со склада "+fmt(s.soldSinceStart)+" шт") : "") +
-    kpi("Остаток на складе", fmt(s.totalStock)+" шт", "заказов за "+rep.lookbackDays+" дн"+(rep.periodStart?(" · "+fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)):"")+": "+fmt(s.soldRecent)+" шт") +
+    kpi("Остаток на складе", fmt(s.totalStock)+" шт", "за "+rep.lookbackDays+" дн"+(rep.periodStart?(" · "+fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)):"")+": заказов "+fmt(s.soldRecent)+(s.salesRecent!=null?(", продаж "+fmt(s.salesRecent)):"")+" шт") +
+    buy +
     kpi("Темп продаж", s.currentDaily+" шт/день", "динамика к пред. периоду", trendCls, trendHtml(s.trendPct)) +
     kpi("Хватит остатка", (s.daysOfSupply==null?"∞":s.daysOfSupply+" дн"), s.depletionDate?("обнулится "+fmtDate(s.depletionDate)):"при текущем темпе") +
     kpi("До конца сезона", rep.daysLeft+" дн", "до "+fmtDate(rep.seasonEnd)) +
@@ -331,10 +314,9 @@ function render(rep){
     kpi("Скидка", s.recommendedDiscount+"%", "сейчас ~"+s.currentDiscount+"% · рекомендуем") +
     (s.currentPrice!=null ? kpi("Рекоменд. цена", fmt(s.recommendedPrice)+" ₽", "сейчас ~"+fmt(s.currentPrice)+" ₽"+(s.minPrice!=null?" · мин "+fmt(s.minPrice)+" ₽":"")) : "") +
     kpi("Потолок по марже", (s.maxDiscountByMargin!=null?s.maxDiscountByMargin+"%":"—"), (s.marginLimited?"⚠️ упёрлись в маржу":"себест. "+s.costSharePct+"% · маржа "+s.minMarginPct+"%"), s.marginLimited?"down":"");
-  // аналитика по размерам (по категории)
-  var sizes=s.sizes||[];
+  // таблица по размерам
   var ztb=$("sizetbody"); ztb.innerHTML="";
-  sizes.forEach(function(z){
+  (sizes||[]).forEach(function(z){
     var st=STATUS[z.status]||["—","empty"];
     var tr=document.createElement("tr");
     tr.innerHTML=
@@ -351,7 +333,71 @@ function render(rep){
       '<td><span class="pill '+st[1]+'">'+st[0]+'</span></td>';
     ztb.appendChild(tr);
   });
-  $("sizeblock").hidden = sizes.length===0;
+  $("sizeblock").hidden = (sizes||[]).length===0;
+  // сценарии — только для всей категории
+  var hasScen = ((rep.summary.scenarios)||[]).some(function(c){return c.addDiscount>0;});
+  $("scenblock").hidden = !!row || !hasScen;
+}
+
+// Фильтр таблицы по конкретному артикулу (список вверху, справа от категории)
+function applyArtFilter(){
+  var v=$("artFilter").value, tb=$("tbody");
+  Array.prototype.forEach.call(tb.children,function(tr){
+    var a=tr.dataset.art||"";
+    tr.classList.toggle("filtered-out", !(!v || a===v));
+  });
+  if(!lastReport) return;
+  if(v){
+    var r=null, rows=lastReport.rows||[];
+    for(var i=0;i<rows.length;i++){ if((rows[i].vendorCode||"")===v){ r=rows[i]; break; } }
+    if(r) paintSummary(rowToSummary(r,lastReport), r.sizes||[], lastReport, r);
+  } else {
+    paintSummary(lastReport.summary, (lastReport.summary.sizes)||[], lastReport, null);
+  }
+}
+// Сводка по одному артикулу (для фильтра) — из строки отчёта
+function rowToSummary(r, rep){
+  var initBased = r.initialStock!=null;
+  var base = initBased ? r.initialStock : r.stock;
+  var tgtFrac = (parseFloat(rep.targetRemainPct)||0)/100;
+  var targetLeft = Math.round(base*tgtFrac);
+  var needSell = Math.max(0, r.stock - targetLeft);
+  var maxD = rep.summary.maxDiscountByMargin;
+  return {
+    totalStock:r.stock, initialStock:r.initialStock, soldSinceStart:r.soldSinceStart,
+    soldRecent:r.soldRecent, salesRecent:r.salesRecent, buyoutPct:r.buyoutPct,
+    currentDaily:r.dailyRate, trendPct:r.trendPct,
+    daysOfSupply:r.daysOfSupply, depletionDate:r.depletionDate, requiredDaily:r.requiredDaily,
+    needSell:needSell, projLeft:r.projLeft, projLeftPct:r.projLeftPct,
+    targetLeftUnits:targetLeft, targetFromInitial:initBased, deadstock:r.deadstock,
+    currentDiscount:r.currentDiscount, recommendedDiscount:r.recommendedDiscount,
+    currentPrice:r.currentPrice, recommendedPrice:r.recommendedPrice, minPrice:r.minPrice,
+    maxDiscountByMargin:maxD, marginLimited:(maxD!=null && r.recommendedDiscount>=maxD),
+    costSharePct:rep.summary.costSharePct, minMarginPct:rep.summary.minMarginPct,
+    pricesAvailable:rep.summary.pricesAvailable, sizes:r.sizes,
+    verdict:rowVerdict(r, rep, needSell, targetLeft, initBased)
+  };
+}
+function rowVerdict(r, rep, needSell, targetLeft, initBased){
+  var basis = initBased?"начального":"текущего";
+  if(r.stock<=0) return r.vendorCode+": остатка нет.";
+  if(r.dailyRate<=0) return r.vendorCode+": продаж нет, на складе "+fmt(r.stock)+" шт — нужна скидка ~"+r.recommendedDiscount+"%.";
+  if(r.requiredDaily<=r.dailyRate) return r.vendorCode+": идём в графике — при "+r.dailyRate+" шт/день к концу сезона останется ~"+r.projLeftPct+"%, цель ≤"+rep.targetRemainPct+"% от "+basis+" остатка достижима.";
+  return r.vendorCode+": не успеваем — сейчас "+r.dailyRate+" шт/день. Чтобы осталось ≤"+rep.targetRemainPct+"% от "+basis+" остатка ("+fmt(targetLeft)+" шт), распродать "+fmt(needSell)+" шт, темп "+r.requiredDaily+" шт/день. Скидка ~"+r.recommendedDiscount+"%"+(r.currentPrice?(", цена "+fmt(r.currentPrice)+"₽→"+fmt(r.recommendedPrice)+"₽"):"")+".";
+}
+function fillArtFilter(rows){
+  var sel=$("artFilter"), prev=sel.value, arts=[], seen={};
+  rows.forEach(function(r){ var a=r.vendorCode||""; if(a&&!seen[a]){seen[a]=1; arts.push(a);} });
+  sel.innerHTML='<option value="">Все артикулы ('+arts.length+')</option>'+
+    arts.map(function(a){return '<option value="'+a.replace(/"/g,"&quot;")+'">'+a+'</option>';}).join("");
+  if(prev&&seen[prev]) sel.value=prev;
+  sel.disabled = arts.length===0;
+  applyArtFilter();
+}
+
+function render(rep){
+  lastReport = rep;
+  var s = rep.summary;
 
   var tb=$("tbody"); tb.innerHTML="";
   (rep.rows||[]).forEach(function(r){
@@ -391,8 +437,7 @@ function render(rep){
     }
   });
   $("sizehint").hidden = !(rep.rows||[]).some(function(r){return (r.sizes||[]).length>0;});
-  fillArtFilter(rep.rows||[]);
-  // сценарии по цене
+  // сценарии по цене (строятся один раз; видимостью управляет paintSummary)
   var scen=(s.scenarios||[]).filter(function(c){return c.addDiscount>0;});
   var stb=$("scentbody"); stb.innerHTML="";
   scen.forEach(function(c){
@@ -406,7 +451,6 @@ function render(rep){
       '<td>'+(c.hitsTarget?'<span class="pill ok">успеваем</span>':'<span class="pill accelerate">мало</span>')+'</td>';
     stb.appendChild(tr);
   });
-  $("scenblock").hidden = scen.length===0;
   $("methodology").innerHTML = "ⓘ Источник: WB Статистика. Темп = заказы после отмён за период "+
     fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)+" ("+rep.lookbackDays+" дн), они же списывают остаток. "+
     "Остаток = quantityFull по всем складам на сейчас. Цена — из WB «Цены и скидки», мин. цена — предел по марже. "+
@@ -415,6 +459,7 @@ function render(rep){
   $("empty").hidden = (rep.rows||[]).length>0;
   $("report").hidden = false;
   sendBtn.disabled = false;
+  fillArtFilter(rep.rows||[]);   // наполняет список артикулов и красит сводку (по фильтру)
   fit();
 }
 function kpi(k,v,s,cls,vhtml){
@@ -472,7 +517,9 @@ function demoReport(p){
     else if(req>daily){status="accelerate";rec=Math.min(maxDisc,Math.round(cur+(req/daily-1)*100/2));}
     var dos=daily>0?Math.round(stock/daily):null;
     var initial=Math.round(stock*1.7), soldSince=initial-stock;
+    var ordCnt=Math.round(daily*win), salCnt=Math.round(ordCnt*0.88);
     rows.push({vendorCode:a[0],subject:a[1],size:"M",nmId:200000000+rows.length,stock:stock,dailyRate:daily,trendPct:[ -12,8,24,0,-5][rows.length],
+      soldRecent:ordCnt,salesRecent:salCnt,buyoutPct:ordCnt>0?Math.round(salCnt/ordCnt*100):null,
       initialStock:initial,soldSinceStart:soldSince,
       daysOfSupply:dos,depletionDate:dos?new Date(today.getTime()+dos*864e5).toISOString():null,
       projLeft:proj,projLeftPct:stock?Math.round(proj/stock*1000)/10:0,requiredDaily:Math.round(req*100)/100,
@@ -507,7 +554,7 @@ function demoReport(p){
   var dead=Math.max(0,Math.round(proj-tgtUnits));
   return {title:"Шорты (демо)",seasonEnd:p.seasonEnd,daysLeft:daysLeft,lookbackDays:win,
     periodStart:pStart,periodEnd:pEnd,targetRemainPct:parseFloat(p.targetPct),generatedAt:"демо",
-    summary:{totalStock:tot,initialStock:totInit,soldSinceStart:Math.max(0,totInit-tot),soldRecent:sold,currentDaily:Math.round(curDaily*100)/100,trendPct:6.4,
+    summary:{totalStock:tot,initialStock:totInit,soldSinceStart:Math.max(0,totInit-tot),soldRecent:sold,salesRecent:Math.round(sold*0.88),buyoutPct:88,currentDaily:Math.round(curDaily*100)/100,trendPct:6.4,
       daysOfSupply:Math.round(tot/curDaily),depletionDate:new Date(today.getTime()+tot/curDaily*864e5).toISOString(),
       requiredDaily:Math.round(req*100)/100,needSell:need,targetFromInitial:true,projLeft:proj,projLeftPct:Math.round(proj/tot*1000)/10,scenarios:scen,sizes:sizeSum,
       maxDiscountByMargin:maxDisc,marginLimited:38>maxDisc,costSharePct:Math.round(cs*100),minMarginPct:Math.round(mm*100),

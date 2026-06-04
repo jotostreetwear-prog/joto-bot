@@ -1389,6 +1389,31 @@ def fetch_wb_orders(date_from):
         cursor_from = max_lc
     return list(collected.values())
 
+def fetch_wb_sales(date_from):
+    """Продажи (выкупы) с указанной даты, пагинация по lastChangeDate, дедуп по saleID.
+    Записи с saleID 'S...' — выкуп, 'R...' — возврат."""
+    collected = {}
+    cursor_from = date_from
+    for _ in range(60):
+        batch = wb_stats_request("/api/v1/supplier/sales",
+                                 params={"dateFrom": cursor_from, "flag": 0})
+        if not batch:
+            break
+        new_count = 0
+        max_lc = cursor_from
+        for s in batch:
+            key = s.get("saleID") or f"{s.get('srid')}_{s.get('nmId')}_{s.get('date')}"
+            if key not in collected:
+                collected[key] = s
+                new_count += 1
+            lc = s.get("lastChangeDate") or ""
+            if lc > max_lc:
+                max_lc = lc
+        if new_count == 0 or max_lc == cursor_from:
+            break
+        cursor_from = max_lc
+    return list(collected.values())
+
 def _match_seasonal(rec, category_code, keywords):
     """Запись относится к нужной категории по артикулу J<код>… или по названию предмета."""
     art = (rec.get("supplierArticle") or "").upper().strip()
@@ -1485,6 +1510,7 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     orders = fetch_wb_orders(start_prev.strftime("%Y-%m-%d"))
     stocks = fetch_wb_stocks()
     prices = fetch_wb_prices()   # цены/скидки по nmId (надёжнее поля Price в остатках)
+    sales = fetch_wb_sales(start_recent.strftime("%Y-%m-%d"))  # выкупы за окно (для % выкупа)
 
     def _norm_size(v):
         sz = str(v or "").strip()
@@ -1516,6 +1542,19 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             prev_size.setdefault(nm, {})[sz] = prev_size.setdefault(nm, {}).get(sz, 0) + 1
             cat_size[sz]["prev"] += 1
 
+    # --- продажи (выкупы) по nmId за окно: saleID 'S...' — выкуп, 'R...' — возврат ---
+    sales_recent = {}   # nm -> кол-во выкупов
+    for sl in sales:
+        if not _match_seasonal(sl, category_code, keywords):
+            continue
+        if not str(sl.get("saleID") or "").upper().startswith("S"):
+            continue  # учитываем только выкупы (не возвраты)
+        d = _parse_wb_date(sl.get("date"))
+        if not d or d < start_recent or d > rec_end:
+            continue
+        nm = sl.get("nmId")
+        sales_recent[nm] = sales_recent.get(nm, 0) + 1
+
     # --- остатки по nmId (+ по размерам, сумма по складам) + мета ---
     stock_by_nm, meta_by_nm = {}, {}
     stock_nm_size = {}   # nm -> {size -> остаток}
@@ -1546,8 +1585,10 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     for nm in nm_ids:
         meta = meta_by_nm.get(nm, {})
         stock = stock_by_nm.get(nm, 0)
-        sold_recent = recent.get(nm, 0)
+        sold_recent = recent.get(nm, 0)           # заказы за окно
         sold_prev = prev.get(nm, 0)
+        sales_cnt = sales_recent.get(nm, 0)       # выкупы за окно
+        buyout_pct = round(sales_cnt / sold_recent * 100) if sold_recent > 0 else None
         daily = sold_recent / win
         daily_prev = sold_prev / win
 
@@ -1647,6 +1688,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             "soldSinceStart": sold_since,
             "stock": int(stock),
             "soldRecent": sold_recent,
+            "salesRecent": sales_cnt,
+            "buyoutPct": buyout_pct,
             "dailyRate": round(daily, 2),
             "trendPct": trend,
             "daysOfSupply": int(round(dos)) if dos is not None else None,
@@ -1671,6 +1714,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     total_initial = sum(r["initialStock"] for r in rows if r.get("initialStock") is not None) if has_initial else None
     total_sold_since = max(0, total_initial - total_stock) if total_initial is not None else None
     total_recent = sum(r["soldRecent"] for r in rows)
+    total_sales = sum(r["salesRecent"] for r in rows)
+    total_buyout = round(total_sales / total_recent * 100) if total_recent > 0 else None
     total_prev = sum(prev.values())
     cur_daily = total_recent / win
     prev_daily = total_prev / win
@@ -1823,6 +1868,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             "initialStock": total_initial,
             "soldSinceStart": total_sold_since,
             "soldRecent": total_recent,
+            "salesRecent": total_sales,
+            "buyoutPct": total_buyout,
             "currentDaily": round(cur_daily, 2),
             "trendPct": total_trend,
             "daysOfSupply": dos_total,
@@ -1923,9 +1970,11 @@ def build_seasonal_report_message(rep):
         f"📉 *Распродажа сезона — {rep['title']}*",
         f"Отчёт на {rep.get('generatedAt','')} · до конца сезона {rep['daysLeft']} дн (до {rep['seasonEnd']})",
         "",
-        f"📦 Остаток: *{s['totalStock']} шт* · заказов за {rep['lookbackDays']} дн"
+        f"📦 Остаток: *{s['totalStock']} шт*",
+        f"🛒 За {rep['lookbackDays']} дн"
         + (f" ({_fmt_date_ru(rep['periodStart'])}–{_fmt_date_ru(rep['periodEnd'])})" if rep.get('periodStart') else "")
-        + f": {s['soldRecent']} шт",
+        + f": заказов {s['soldRecent']} шт · продаж (выкупов) {s.get('salesRecent', 0)} шт"
+        + (f" · выкуп {s['buyoutPct']}%" if s.get('buyoutPct') is not None else ""),
     ]
     if s.get("initialStock") is not None:
         lines.append(f"🏭 Начальный остаток (факт приход): *{s['initialStock']} шт* · ушло со склада {s['soldSinceStart']} шт")
