@@ -1375,9 +1375,22 @@ def fetch_wb_prices():
     Возвращает {nmId: {'price': базовая_цена, 'discount': %, 'discounted': цена_со_скидкой}}.
     Источник надёжнее, чем поле Price в остатках (его WB отдаёт не всегда).
     Тихо возвращает {} если у токена нет доступа к категории «Цены и скидки»."""
-    if not WB_API_TOKEN:
-        return {}
     out = {}
+    for g in fetch_wb_prices_goods():
+        nm = g.get("nmID")
+        disc = g.get("discount") or 0
+        sizes = g.get("sizes") or []
+        price = next((s.get("price") for s in sizes if s.get("price")), None)
+        discounted = next((s.get("discountedPrice") for s in sizes if s.get("discountedPrice")), None)
+        if nm is not None and price:
+            out[nm] = {"price": price, "discount": disc, "discounted": discounted}
+    return out
+
+def fetch_wb_prices_goods():
+    """Сырой список номенклатур из WB Prices API (с пагинацией). [] если нет доступа."""
+    if not WB_API_TOKEN:
+        return []
+    goods_all = []
     offset, limit = 0, 1000
     try:
         for _ in range(50):  # до 50 000 номенклатур
@@ -1389,19 +1402,27 @@ def fetch_wb_prices():
             goods = (((r.json() or {}).get("data") or {}).get("listGoods")) or []
             if not goods:
                 break
-            for g in goods:
-                nm = g.get("nmID")
-                disc = g.get("discount") or 0
-                sizes = g.get("sizes") or []
-                price = next((s.get("price") for s in sizes if s.get("price")), None)
-                discounted = next((s.get("discountedPrice") for s in sizes if s.get("discountedPrice")), None)
-                if nm is not None and price:
-                    out[nm] = {"price": price, "discount": disc, "discounted": discounted}
+            goods_all.extend(goods)
             if len(goods) < limit:
                 break
             offset += limit
     except Exception:
-        return out
+        return goods_all
+    return goods_all
+
+def fetch_wb_prices_by_vendor():
+    """Цены/скидки по артикулу (vendorCode): {норм.артикул: {'price','discount','discounted'}}."""
+    out = {}
+    for g in fetch_wb_prices_goods():
+        vc = g.get("vendorCode")
+        if not vc:
+            continue
+        disc = g.get("discount") or 0
+        sizes = g.get("sizes") or []
+        price = next((s.get("price") for s in sizes if s.get("price")), None)
+        discounted = next((s.get("discountedPrice") for s in sizes if s.get("discountedPrice")), None)
+        if price:
+            out[_norm_vendor(vc)] = {"price": price, "discount": disc, "discounted": discounted}
     return out
 
 def fetch_wb_orders(date_from):
@@ -2144,6 +2165,59 @@ def api_wb_token_check():
         "categories": cats,
         "hint": "statistics — распродажа (остатки/заказы), prices — цены, content — карточки",
     })
+
+PRICE_LIST_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "price_list_source.json")
+
+@app.route("/api/wb/price-list.xlsx", methods=["GET"])
+def api_wb_price_list():
+    """Отдаёт загруженную таблицу (Артикул/Наименование/Штрих-код/Остаток)
+    с подтянутыми из WB ценами: Цена, Скидка %, Цена со скидкой. Excel-файл."""
+    try:
+        from openpyxl import Workbook
+        from io import BytesIO
+    except Exception:
+        return jsonify({"ok": False, "error": "openpyxl не установлен на сервере"}), 500
+    try:
+        with open(PRICE_LIST_SRC, encoding="utf-8") as fh:
+            src = json.load(fh)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"нет исходной таблицы: {e}"}), 404
+
+    prices = fetch_wb_prices_by_vendor()  # {норм.артикул: {price, discount, discounted}}
+
+    def _price_for(article):
+        for k in _vendor_variants(article):
+            if k in prices:
+                return prices[k]
+        return {}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Цены"
+    ws.append(["Артикул", "Наименование", "Штрих-код", "Остаток",
+               "Цена, ₽", "Скидка, %", "Цена со скидкой, ₽"])
+    matched = 0
+    for row in src.get("rows", []):
+        p = _price_for(row.get("article", ""))
+        if p:
+            matched += 1
+        base = p.get("price")
+        disc = p.get("discount")
+        discounted = p.get("discounted") or (
+            int(round(base * (1 - (disc or 0) / 100.0))) if base else None)
+        ws.append([row.get("article"), row.get("name"), row.get("barcode"), row.get("stock"),
+                   base, disc, discounted])
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    fname = f"wb_prices_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return Response(
+        bio.read(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"',
+                 "X-Matched": str(matched)},
+    )
 
 @app.route("/season-report-debug", methods=["GET"])
 def season_report_debug():

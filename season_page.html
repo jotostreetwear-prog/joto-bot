@@ -157,16 +157,9 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
       <label for="periodEnd">по</label>
       <input id="periodEnd" type="date">
     </div>
-    <div class="fld">
-      <label for="costShare" title="Себестоимость как доля от обычной цены">Себест., %</label>
-      <input id="costShare" type="number" min="0" max="95" step="1" value="35" style="width:90px">
-    </div>
-    <div class="fld">
-      <label for="minMargin" title="Минимальная наценка к себестоимости">Мин. маржа, %</label>
-      <input id="minMargin" type="number" min="0" max="200" step="1" value="10" style="width:90px">
-    </div>
     <button class="btn" id="run" type="button"><span class="spinner"></span><span class="lbl">Сформировать</span></button>
     <button class="btn alt" id="send" type="button" disabled><span class="spinner"></span><span class="lbl">Отправить в отдел продаж</span></button>
+    <a class="btn alt" id="dlprices" href="/api/wb/price-list.xlsx">⬇️ Скачать цены (Excel)</a>
     <span class="demo-badge" id="demo">демо-данные · WB-токен не подключён</span>
   </div>
   <p class="note" id="note"></p>
@@ -259,8 +252,7 @@ var STATUS={ok:["В графике","ok"],accelerate:["Ускорить","accele
 
 function params(){
   var p={ category:$("category").value, seasonEnd:$("seasonEnd").value,
-    targetPct:$("targetPct").value, lookback:$("lookback").value,
-    costSharePct:$("costShare").value, minMarginPct:$("minMargin").value };
+    targetPct:$("targetPct").value, lookback:$("lookback").value };
   var ps=$("periodStart").value, pe=$("periodEnd").value;
   if(ps&&pe){ p.periodStart=ps; p.periodEnd=pe; }
   return p;
