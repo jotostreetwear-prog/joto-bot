@@ -2023,7 +2023,10 @@ def build_seasonal_report_message(rep):
                 f"распродадим за ~{c['daysToTarget']} дн (к {_fmt_date_ru(c['selloutDate'])}){faster}, "
                 f"остаток к концу сезона ~{c['projLeftPct']}%"
             )
-        lines.append("✅ — успеваем продать цель до конца сезона")
+        if any(c.get("hitsTarget") for c in scen):
+            lines.append("✅ — успеваем продать цель до конца сезона")
+        else:
+            lines.append("▫️ — даже при максимальной скидке цель к концу сезона не достигается")
 
     lines.append("")
     lines.append(f"📊 Полная таблица: {season_url}")
