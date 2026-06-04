@@ -241,9 +241,15 @@ td textarea{min-height:40px}
           <input type="file" id="nkFile" accept=".xlsx" style="flex:1;min-width:220px">
           <button class="btn secondary" id="nkFileBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить файл и заполнить таблицу</span></button>
         </div>
-        <p class="note">Берём артикул («Модель / артикул производителя») и присвоенный ГТИН («Код товара»).
-          Грузите файл уже <b>после присвоения ГТИНов</b> в ЧЗ — иначе баркоды будут пустыми.</p>
+        <p class="note">Берём артикул («Модель / артикул производителя»), размер и присвоенный ГТИН
+          (из «Кода товара» или «Результата обработки»). Одна карточка = один артикул со всеми размерами.
+          Грузите файл уже <b>после присвоения ГТИНов</b> в ЧЗ.</p>
         <div class="status" id="nkFileResult"></div>
+        <div id="filePreview" style="margin-top:12px"></div>
+        <button class="btn accent" id="createFromFileBtn" type="button" style="margin-top:12px;display:none">
+          <span class="spin"></span><span class="lbl">Создать карточки из файла на WB</span>
+        </button>
+        <div class="status" id="fileCreateStatus"></div>
       </div>
 
       <div id="nkStatus" class="muted" style="margin-top:14px">Проверяю настройку Честного ЗНАка…</div>
@@ -571,7 +577,22 @@ $("genBarcodesBtn").addEventListener("click",async function(){
   finally{ spinOn($("genBarcodesBtn"),false,"Сгенерировать баркоды (WB)"); }
 });
 
-/* Баркоды из ФАЙЛА Честного ЗНАка — заполняем таблицу создания */
+/* Баркоды из ФАЙЛА Честного ЗНАка — группируем по артикулу (мультиразмерные карточки) */
+var FILE_GROUPS=null;
+function cleanTitle(n){ return String(n||"").replace(/,?\s*размер.*$/i,"").trim(); }
+function renderFilePreview(){
+  var arts=Object.keys(FILE_GROUPS);
+  if(arts.length===0){ $("filePreview").innerHTML=""; $("createFromFileBtn").style.display="none"; return; }
+  var html='<div class="tbl-wrap"><table><thead><tr><th>Артикул</th><th>Наименование</th><th>Размеры → ГТИН</th></tr></thead><tbody>';
+  arts.forEach(function(a){
+    var g=FILE_GROUPS[a];
+    var sizes=g.sizes.map(function(s){return esc(s.size||"б/р")+" → "+(s.gtin?esc(s.gtin):"<span style=\"color:var(--err)\">нет ГТИН</span>");}).join("<br>");
+    html+='<tr><td class="pick-vc">'+esc(a)+'</td><td>'+esc(g.title)+'</td><td style="font-family:var(--mono);font-size:12px">'+sizes+'</td></tr>';
+  });
+  html+='</tbody></table></div>';
+  $("filePreview").innerHTML=html;
+  $("createFromFileBtn").style.display="";
+}
 $("nkFileBtn").addEventListener("click",async function(){
   var f=$("nkFile").files[0];
   if(!f){ showStatus($("nkFileResult"),false,"Выберите файл .xlsx"); return; }
@@ -581,21 +602,47 @@ $("nkFileBtn").addEventListener("click",async function(){
     var r=await fetch("/api/wb/parse-nk-file",{method:"POST",body:fd});
     var j=await r.json();
     if(!j.ok){ showStatus($("nkFileResult"),false,j.error||"Ошибка разбора файла"); return; }
-    $("createBody").innerHTML="";
+    FILE_GROUPS={};
     (j.rows||[]).forEach(function(row){
-      addRow();
-      var tr=$("createBody").lastElementChild;
-      tr.querySelector(".c-vc").value=row.article||"";
-      tr.querySelector(".c-title").value=row.name||"";
-      tr.querySelector(".c-bar").value=row.gtin||"";
+      var a=row.article; if(!a) return;
+      if(!FILE_GROUPS[a]) FILE_GROUPS[a]={title:cleanTitle(row.name), sizes:[]};
+      FILE_GROUPS[a].sizes.push({size:row.size, gtin:row.gtin});
     });
-    if($("createBody").children.length===0) addRow();
-    var msg="Загружено строк: "+j.count+", из них с ГТИН (баркодом): "+j.with_gtin+".";
-    if(j.with_gtin===0) msg+=" ⚠ В файле ГТИНы пустые — выгрузите файл из ЧЗ после присвоения ГТИНов.";
-    else msg+=" Проверьте таблицу и создайте карточки на WB.";
+    renderFilePreview();
+    var msg="Артикулов: "+(j.articles||Object.keys(FILE_GROUPS).length)+", строк (размеров): "+j.count+", из них с ГТИН: "+j.with_gtin+".";
+    if(j.with_gtin===0) msg+=" ⚠ ГТИНы пустые — выгрузите файл из ЧЗ после присвоения ГТИНов.";
+    else msg+=" Проверьте предпросмотр и создайте карточки на WB.";
     showStatus($("nkFileResult"),j.with_gtin>0,msg);
   }catch(e){ showStatus($("nkFileResult"),false,"Не удалось загрузить файл"); }
   finally{ spinOn($("nkFileBtn"),false,"Загрузить файл и заполнить таблицу"); fit(); }
+});
+
+$("createFromFileBtn").addEventListener("click",async function(){
+  if(!FILE_GROUPS||Object.keys(FILE_GROUPS).length===0){ showStatus($("fileCreateStatus"),false,"Сначала загрузите файл"); return; }
+  var sid=parseInt($("createSubj").value,10);
+  if(!sid){ showStatus($("fileCreateStatus"),false,"Сначала выберите категорию WB (блок 1)"); return; }
+  var brand=$("cBrand").value.trim();
+  var dims={length:num("cLen"),width:num("cWid"),height:num("cHei"),weightBrutto:num("cWei")};
+  var price=num("cPrice");
+  var charcs=collectCharcs();
+  var items=Object.keys(FILE_GROUPS).map(function(a){
+    var g=FILE_GROUPS[a];
+    return { subjectID:sid, variants:[{
+      brand:brand, title:g.title||a, description:g.title||"", vendorCode:a,
+      dimensions:dims, characteristics:charcs,
+      sizes: g.sizes.map(function(s){
+        var sz=String(s.size||"0");
+        return { techSize:sz, wbSize:sz, price:price, skus: s.gtin?[s.gtin]:[] };
+      })
+    }]};
+  });
+  spinOn($("createFromFileBtn"),true,"Создаю на WB…");
+  try{
+    var j=await api("/api/wb/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:items})});
+    if(j.ok) showStatus($("fileCreateStatus"),true,"Отправлено на создание: "+j.created+" карточк(и). Проверьте статус в кабинете WB через 1–2 минуты.");
+    else showStatus($("fileCreateStatus"),false,j.error||"Ошибка создания");
+  }catch(e){ showStatus($("fileCreateStatus"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("createFromFileBtn"),false,"Создать карточки из файла на WB"); fit(); }
 });
 
 /* Баркоды из Честного ЗНАка (ГТИНы по API) */

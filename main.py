@@ -2017,14 +2017,32 @@ def api_parse_nk_file():
                     return j
             return -1
 
+        import re
         gtin_col = find_col(lambda t, c, m: c.upper() == "GTIN" or t.lower() == "код товара")
         article_col = find_col(lambda t, c, m: "артикул производител" in t.lower() and m.lower() == "value")
         if article_col < 0:
             article_col = find_col(lambda t, c, m: "артикул" in t.lower() and m.lower() == "value")
         name_col = find_col(lambda t, c, m: "полное наименование" in t.lower())
         color_col = find_col(lambda t, c, m: t.lower() == "цвет")
+        size_col = find_col(lambda t, c, m: "размер" in t.lower() and m.lower() == "value")
+        result_col = find_col(lambda t, c, m: "результат обработки" in t.lower())
         if article_col < 0:
             return jsonify({"ok": False, "error": "Не найден столбец «Модель / артикул производителя» — это шаблон импорта НК?"}), 400
+
+        def extract_gtin(r):
+            # 1) прямой столбец «Код товара»/GTIN
+            g = cell(r, gtin_col) if gtin_col >= 0 else ""
+            g = re.sub(r"\D", "", g)
+            if g:
+                return g
+            # 2) из текста «Результат обработки»: «Создан код товара 4640515801332 ...»
+            if result_col >= 0:
+                m = re.search(r"код товара\s*(\d{8,14})", cell(r, result_col), re.IGNORECASE)
+                if not m:
+                    m = re.search(r"(\d{12,14})", cell(r, result_col))
+                if m:
+                    return m.group(1)
+            return ""
 
         out = []
         for r in rows[4:]:  # данные начинаются с 5-й строки
@@ -2033,15 +2051,20 @@ def api_parse_nk_file():
                 continue
             out.append({
                 "article": art,
-                "gtin": cell(r, gtin_col) if gtin_col >= 0 else "",
+                "size": cell(r, size_col) if size_col >= 0 else "",
+                "gtin": extract_gtin(r),
                 "name": cell(r, name_col) if name_col >= 0 else "",
                 "color": cell(r, color_col) if color_col >= 0 else "",
             })
         with_gtin = sum(1 for x in out if x["gtin"])
+        articles = sorted(set(x["article"] for x in out))
         return jsonify({
             "ok": True, "rows": out, "count": len(out), "with_gtin": with_gtin,
+            "articles": len(articles),
             "columns": {"article": article_col + 1,
                         "gtin": (gtin_col + 1) if gtin_col >= 0 else None,
+                        "size": (size_col + 1) if size_col >= 0 else None,
+                        "result": (result_col + 1) if result_col >= 0 else None,
                         "name": (name_col + 1) if name_col >= 0 else None},
         })
     except Exception as e:
