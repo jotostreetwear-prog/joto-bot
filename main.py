@@ -2052,6 +2052,31 @@ def season_report_now():
     threading.Thread(target=send_seasonal_report).start()
     return jsonify({"ok": True, "message": "Сезонный отчёт отправляется в отдел продаж"})
 
+@app.route("/api/wb/token-check", methods=["GET"])
+def api_wb_token_check():
+    """Проверка нового токена: какие категории WB доступны (через /ping каждого API).
+    Только чтение, ничего не отправляет и не меняет."""
+    if not WB_API_TOKEN:
+        return jsonify({"ok": False, "error": "WB_API_TOKEN не задан"}), 400
+
+    def _ping(base):
+        try:
+            r = httpx.get(base + "/ping", headers={"Authorization": WB_API_TOKEN}, timeout=15)
+            return {"ok": r.status_code == 200, "httpStatus": r.status_code}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:200]}
+
+    cats = {
+        "statistics": _ping("https://statistics-api.wildberries.ru"),  # остатки, заказы
+        "prices": _ping("https://discounts-prices-api.wildberries.ru"),  # цены и скидки
+        "content": _ping("https://content-api.wildberries.ru"),         # карточки
+    }
+    return jsonify({
+        "ok": all(v.get("ok") for v in cats.values()),
+        "categories": cats,
+        "hint": "statistics — распродажа (остатки/заказы), prices — цены, content — карточки",
+    })
+
 @app.route("/season-report-debug", methods=["GET"])
 def season_report_debug():
     """Синхронная диагностика: показывает, где обрывается путь отчёта в чат."""
