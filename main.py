@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import time
 import mimetypes
 import threading
@@ -1291,6 +1292,21 @@ SEASONAL_PRESETS = {
     "05": {"title": "Худи",    "kw": ["худи", "толстовк"]},
 }
 
+# Справочник фактических начальных остатков (приходы с производств), data/initial_stock.json.
+INITIAL_STOCK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "initial_stock.json")
+
+def _norm_vendor(v):
+    """Нормализуем артикул/цвет для сопоставления (регистр, пробелы)."""
+    return re.sub(r"\s+", " ", str(v or "").strip()).lower()
+
+def load_initial_stock():
+    """{нормализованный vendorCode -> {'total':int, 'sizes':{size:int}, ...}}; {} если файла нет."""
+    try:
+        with open(INITIAL_STOCK_PATH, encoding="utf-8") as fh:
+            return (json.load(fh) or {}).get("items", {})
+    except Exception:
+        return {}
+
 def wb_stats_request(path, params=None, timeout=120):
     if not WB_API_TOKEN:
         raise RuntimeError("WB_API_TOKEN не задан — нужен токен с доступом к категории «Статистика».")
@@ -1375,6 +1391,10 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     if keywords is None:
         keywords = preset.get("kw", [])
     title = preset.get("title") or f"Категория J{category_code}"
+
+    initial_stock = load_initial_stock()      # фактический начальный остаток (приходы)
+    cat_initial_size = {}                      # size -> начальный остаток по категории
+    has_initial = False
 
     today = datetime.now().date()
 
@@ -1532,12 +1552,24 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         else:
             status = "ok"  # текущего темпа хватает
 
+        # фактический начальный остаток по этому артикулу (из приходов)
+        init_item = initial_stock.get(_norm_vendor(meta.get("vendorCode"))) or {}
+        init_total = init_item.get("total")
+        init_sizes = init_item.get("sizes", {}) or {}
+        if init_item:
+            has_initial = True
+        # продано/ушло со склада с момента прихода = начальный − текущий (≥0)
+        sold_since = max(0, int(init_total) - int(stock)) if init_total is not None else None
+
         # разбивка по размерам внутри артикула
         size_rows = []
-        sizes_seen = set(stock_nm_size.get(nm, {})) | set(recent_size.get(nm, {}))
+        sizes_seen = set(stock_nm_size.get(nm, {})) | set(recent_size.get(nm, {})) | set(init_sizes)
         for sz in sizes_seen:
             s_stock = stock_nm_size.get(nm, {}).get(sz, 0)
             s_recent = recent_size.get(nm, {}).get(sz, 0)
+            s_init = init_sizes.get(sz)
+            if s_init is not None:
+                cat_initial_size[sz] = cat_initial_size.get(sz, 0) + int(s_init)
             s_daily = s_recent / win
             s_dos = int(round(s_stock / s_daily)) if s_daily > 0 else None
             s_proj_left = max(0.0, s_stock - s_daily * days_left)
@@ -1545,6 +1577,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             s_status = "empty" if s_stock <= 0 else ("stuck" if s_daily <= 0 else "ok")
             size_rows.append({
                 "size": sz, "stock": int(s_stock), "soldRecent": s_recent,
+                "initialStock": int(s_init) if s_init is not None else None,
+                "soldSinceStart": (max(0, int(s_init) - int(s_stock)) if s_init is not None else None),
                 "dailyRate": round(s_daily, 2), "daysOfSupply": s_dos,
                 "projLeftPct": s_pct, "status": s_status,
                 "currentDiscount": int(cur_disc),
@@ -1558,6 +1592,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             "subject": meta.get("subject"),
             "size": meta.get("size"),
             "price": meta.get("price"),
+            "initialStock": int(init_total) if init_total is not None else None,
+            "soldSinceStart": sold_since,
             "stock": int(stock),
             "soldRecent": sold_recent,
             "dailyRate": round(daily, 2),
@@ -1578,6 +1614,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
 
     # --- сводка ---
     total_stock = sum(r["stock"] for r in rows)
+    total_initial = sum(r["initialStock"] for r in rows if r.get("initialStock") is not None) if has_initial else None
+    total_sold_since = max(0, total_initial - total_stock) if total_initial is not None else None
     total_recent = sum(r["soldRecent"] for r in rows)
     total_prev = sum(prev.values())
     cur_daily = total_recent / win
@@ -1682,8 +1720,11 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         s_proj = max(0.0, st - s_daily * days_left)
         s_pct = round(s_proj / st * 100, 1) if st > 0 else 0.0
         s_status = "empty" if st <= 0 else ("stuck" if s_daily <= 0 else "ok")
+        s_init = cat_initial_size.get(sz)
         size_summary.append({
             "size": sz, "stock": int(st), "soldRecent": rc,
+            "initialStock": int(s_init) if s_init is not None else None,
+            "soldSinceStart": (max(0, int(s_init) - int(st)) if s_init is not None else None),
             "dailyRate": round(s_daily, 2), "daysOfSupply": s_dos,
             "projLeftPct": s_pct, "status": s_status,
             "currentDiscount": int(round(avg_disc)),
@@ -1704,6 +1745,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         "elasticity": elasticity,
         "summary": {
             "totalStock": total_stock,
+            "initialStock": total_initial,
+            "soldSinceStart": total_sold_since,
             "soldRecent": total_recent,
             "currentDaily": round(cur_daily, 2),
             "trendPct": total_trend,
@@ -1802,6 +1845,10 @@ def build_seasonal_report_message(rep):
         f"📦 Остаток: *{s['totalStock']} шт* · заказов за {rep['lookbackDays']} дн"
         + (f" ({_fmt_date_ru(rep['periodStart'])}–{_fmt_date_ru(rep['periodEnd'])})" if rep.get('periodStart') else "")
         + f": {s['soldRecent']} шт",
+    ]
+    if s.get("initialStock") is not None:
+        lines.append(f"🏭 Начальный остаток (факт приход): *{s['initialStock']} шт* · ушло со склада {s['soldSinceStart']} шт")
+    lines += [
         f"⚡ Темп: *{s['currentDaily']} шт/день* (динамика {_trend_arrow(s['trendPct'])})",
         f"⏳ Хватит: {dos_txt}",
         f"🎯 Чтобы осталось ≤{int(rep['targetRemainPct'])}% ({s['targetLeftUnits']} шт) → нужно *{s['requiredDaily']} шт/день*",
