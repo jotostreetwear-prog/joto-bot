@@ -102,6 +102,8 @@ tbody tr:hover{ background:var(--surface-2); }
 .thumb.ph{ display:inline-block; }
 .thumbwrap{ line-height:0; display:inline-flex; flex:0 0 auto; }
 .thumb:hover{ filter:brightness(1.05); }
+.recprice{ color:var(--accent-deep); white-space:nowrap; }
+[data-theme="dark"] .recprice{ color:var(--accent); }
 tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
 .szwrap{ display:flex; flex-wrap:wrap; gap:8px; }
 .szchip{ font-size:12px; padding:5px 10px; border-radius:8px; border:1px solid var(--line); background:var(--surface); white-space:nowrap; }
@@ -178,7 +180,7 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
       <div class="tablewrap" style="margin-bottom:22px">
         <table style="min-width:560px">
           <thead><tr>
-            <th>Размер</th><th>Нач. остаток<br><span class="sub">факт</span></th><th>Остаток</th><th>Заказов/день</th><th>Хватит до</th><th>Остаток к концу сезона</th><th>Скидка</th><th>Цена ₽</th><th>Мин. цена ₽<br><span class="sub">по марже</span></th><th>Статус</th>
+            <th>Размер</th><th>Нач. остаток<br><span class="sub">факт</span></th><th>Остаток</th><th>Заказов/день</th><th>Хватит до</th><th>Остаток к концу сезона</th><th>Скидка</th><th>Цена сейчас ₽</th><th>Реком. цена ₽<br><span class="sub">под темп</span></th><th>Мин. цена ₽<br><span class="sub">по марже</span></th><th>Статус</th>
           </tr></thead>
           <tbody id="sizetbody"></tbody>
         </table>
@@ -201,7 +203,7 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
         <thead><tr>
           <th>Артикул</th><th>Нач. остаток<br><span class="sub">факт</span></th><th>Остаток</th><th>Заказов/день</th><th>Динамика</th>
           <th>Хватит до</th><th>Прогноз остатка</th><th>Нужно/день</th>
-          <th>В неликвид</th><th>Скидка</th><th>Цена ₽</th><th>Мин. цена ₽<br><span class="sub">по марже</span></th><th>Статус</th>
+          <th>В неликвид</th><th>Скидка</th><th>Цена сейчас ₽</th><th>Реком. цена ₽<br><span class="sub">под темп</span></th><th>Мин. цена ₽<br><span class="sub">по марже</span></th><th>Статус</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table>
@@ -250,6 +252,9 @@ function thumb(nm){ var u=wbImg(nm); if(!u) return '<span class="thumb ph"></spa
 function priceHtml(cur,rec){ if(cur==null) return '<span class="sub">—</span>';
   if(rec==null||rec===cur) return '<b>'+fmt(cur)+'</b> ₽';
   return '<span class="sub" style="text-decoration:line-through">'+fmt(cur)+'</span> <b>'+fmt(rec)+'</b> ₽'; }
+function priceCell(v){ return (v==null)?'<span class="sub">—</span>':(fmt(v)+' ₽'); }
+function recPriceCell(v){ return (v==null)?'<span class="sub">—</span>':('<b class="recprice">'+fmt(v)+' ₽</b>'); }
+function minPriceCell(v){ return (v==null)?'<span class="sub">—</span>':('<span class="sub">'+fmt(v)+' ₽</span>'); }
 var STATUS={ok:["В графике","ok"],accelerate:["Ускорить","accelerate"],stuck:["Стоит","stuck"],empty:["Нет остатка","empty"]};
 
 function params(){
@@ -292,8 +297,9 @@ function render(rep){
       '<td>'+(z.daysOfSupply==null?'<span class="sub">∞</span>':z.daysOfSupply+" дн")+'</td>'+
       '<td>'+z.projLeftPct+'%</td>'+
       '<td>'+discHtml(z.currentDiscount,z.recommendedDiscount)+'</td>'+
-      '<td>'+priceHtml(z.currentPrice,z.recommendedPrice)+'</td>'+
-      '<td>'+(z.minPrice!=null?'<span class="sub">'+fmt(z.minPrice)+' ₽</span>':'<span class="sub">—</span>')+'</td>'+
+      '<td>'+priceCell(z.currentPrice)+'</td>'+
+      '<td>'+recPriceCell(z.recommendedPrice)+'</td>'+
+      '<td>'+minPriceCell(z.minPrice)+'</td>'+
       '<td><span class="pill '+st[1]+'">'+st[0]+'</span></td>';
     ztb.appendChild(tr);
   });
@@ -316,8 +322,9 @@ function render(rep){
       '<td>'+r.requiredDaily+'</td>'+
       '<td>'+(r.deadstock>0?'<b>'+fmt(r.deadstock)+'</b>':"—")+'</td>'+
       '<td>'+discHtml(r.currentDiscount,r.recommendedDiscount)+'</td>'+
-      '<td>'+priceHtml(r.currentPrice,r.recommendedPrice)+'</td>'+
-      '<td>'+(r.minPrice!=null?'<span class="sub">'+fmt(r.minPrice)+' ₽</span>':'<span class="sub">—</span>')+'</td>'+
+      '<td>'+priceCell(r.currentPrice)+'</td>'+
+      '<td>'+recPriceCell(r.recommendedPrice)+'</td>'+
+      '<td>'+minPriceCell(r.minPrice)+'</td>'+
       '<td><span class="pill '+st[1]+'">'+st[0]+'</span></td>';
     tb.appendChild(tr);
     if(hasSizes){
@@ -328,7 +335,7 @@ function render(rep){
         var d=(z.recommendedDiscount!=null&&z.recommendedDiscount!==z.currentDiscount)?(' · скидка '+z.currentDiscount+'%→'+z.recommendedDiscount+'%'):(z.currentDiscount!=null?(' · скидка '+z.currentDiscount+'%'):'');
         return '<span class="szchip '+cls+'"><b>'+z.size+'</b> '+fmt(z.stock)+' шт · '+z.dailyRate+'/д · ост '+z.projLeftPct+'%'+d+(z.status==="stuck"&&z.stock>0?' ⚠️':'')+'</span>';
       }).join("");
-      det.innerHTML='<td colspan="13"><div class="szwrap">'+chips+'</div></td>';
+      det.innerHTML='<td colspan="14"><div class="szwrap">'+chips+'</div></td>';
       tb.appendChild(det);
       tr.addEventListener("click",function(){
         det.hidden=!det.hidden;
