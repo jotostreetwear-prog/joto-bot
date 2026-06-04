@@ -39,6 +39,16 @@ SEASON_END_DATE = os.environ.get("SEASON_END_DATE", "2026-08-31").strip()
 # Получатель отчёта по распродаже. Можно указать имя сотрудника (ищется в Битриксе),
 # ID пользователя (число) или чат (chatXXXX). По умолчанию — лично Татьяне.
 SEASON_REPORT_TO = os.environ.get("SEASON_REPORT_TO", "Татьяна").strip()
+# Маржа: себестоимость как доля от обычной цены (0..1) и минимальная наценка к ней.
+# Ограничивают максимально возможную скидку, чтобы распродажа не уходила ниже маржи.
+try:
+    SEASON_COST_SHARE = float(os.environ.get("SEASON_COST_SHARE", "0.35") or 0.35)
+except Exception:
+    SEASON_COST_SHARE = 0.35
+try:
+    SEASON_MIN_MARGIN = float(os.environ.get("SEASON_MIN_MARGIN", "0.10") or 0.10)
+except Exception:
+    SEASON_MIN_MARGIN = 0.10
 
 def is_silent_dialog(dialog_id):
     """Чаты только для отчётов/алертов: бот туда пишет сам, но не приветствует
@@ -1284,7 +1294,8 @@ def _parse_wb_date(s):
         return None
 
 def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08-31",
-                          target_remain_pct=10.0, lookback_days=28, elasticity=2.0):
+                          target_remain_pct=10.0, lookback_days=28, elasticity=2.0,
+                          cost_share=None, min_margin=None):
     """
     Считает по сезонной категории:
       • остаток (quantityFull по всем складам),
@@ -1312,18 +1323,26 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     target_frac = max(0.0, min(float(target_remain_pct) / 100.0, 1.0))
     elasticity = max(0.2, float(elasticity))
 
+    # Маржа → максимально допустимая скидка: цена со скидкой ≥ себестоимость·(1+мин.маржа).
+    cs = SEASON_COST_SHARE if cost_share is None else float(cost_share)
+    mm = SEASON_MIN_MARGIN if min_margin is None else float(min_margin)
+    cs = min(max(cs, 0.0), 0.95)
+    mm = max(mm, 0.0)
+    max_disc = min(85, max(0, int(round((1 - cs * (1 + mm)) * 100))))
+
     def _rec_disc_for(s_stock, s_daily, base_disc):
-        """Рекомендуемая скидка под конкретный остаток/темп, чтобы успеть к цели."""
+        """Рекомендуемая скидка под конкретный остаток/темп, чтобы успеть к цели,
+        но не глубже максимума по марже (max_disc)."""
         base = int(round(base_disc or 0))
         if s_stock <= 0:
-            return base
-        s_req = s_stock * (1 - target_frac) / days_left
+            return min(max_disc, base) if base > max_disc else base
         if s_daily <= 0:                                  # стоит без продаж — агрессивно
-            return min(85, max(base + 30, 40))
+            return min(max_disc, max(base + 30, 40))
+        s_req = s_stock * (1 - target_frac) / days_left
         if s_req > s_daily:                               # не успеваем — поднять скидку
             up = (s_req / s_daily - 1) * 100.0
-            return min(85, int(round(base + up / elasticity)))
-        return base                                       # темпа хватает
+            return min(max_disc, int(round(base + up / elasticity)))
+        return min(base, max_disc)                        # темпа хватает
 
     orders = fetch_wb_orders(start_prev.strftime("%Y-%m-%d"))
     stocks = fetch_wb_stocks()
@@ -1417,12 +1436,12 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             status = "empty"
         elif daily <= 0:
             status = "stuck"  # есть остаток, но нет продаж
-            rec_disc = min(85, max(int(cur_disc) + 30, 40))
+            rec_disc = min(max_disc, max(int(cur_disc) + 30, 40))
         elif required_daily > daily:
             status = "accelerate"
             uplift = (required_daily / daily - 1) * 100.0  # на сколько % поднять темп
             add_pp = uplift / elasticity
-            rec_disc = min(85, int(round(cur_disc + add_pp)))
+            rec_disc = min(max_disc, int(round(cur_disc + add_pp)))
         else:
             status = "ok"  # текущего темпа хватает
 
@@ -1493,12 +1512,17 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     else:
         avg_disc = 0.0
     rec_disc_total = round(avg_disc)
+    rec_disc_raw = round(avg_disc)            # без ограничения по марже — чтобы понять, упёрлись ли
     uplift_total = 0.0
     if cur_daily > 0 and required_daily > cur_daily:
         uplift_total = (required_daily / cur_daily - 1) * 100.0
-        rec_disc_total = min(85, int(round(avg_disc + uplift_total / elasticity)))
+        rec_disc_raw = int(round(avg_disc + uplift_total / elasticity))
+        rec_disc_total = min(max_disc, rec_disc_raw)
     elif cur_daily <= 0 and total_stock > 0:
-        rec_disc_total = min(85, max(int(round(avg_disc)) + 30, 40))
+        rec_disc_raw = max(int(round(avg_disc)) + 30, 40)
+        rec_disc_total = min(max_disc, rec_disc_raw)
+    # упёрлись в маржу: нужная скидка глубже, чем позволяет минимальная маржа
+    margin_limited = rec_disc_raw > max_disc
 
     if total_stock == 0:
         verdict = "Остатков в категории нет — распродавать нечего."
@@ -1515,6 +1539,10 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
                    f"{required_daily:.1f} шт/день (+{round(uplift_total)} % к темпу). "
                    f"Иначе в неликвид ляжет ~{total_deadstock} шт. "
                    f"Рекомендуемая средняя скидка ~{rec_disc_total} %.")
+    if margin_limited:
+        verdict += (f" ⚠️ Скидка упирается в маржу (макс {max_disc} % при себестоимости "
+                    f"{int(round(cs*100))} % и мин. марже {int(round(mm*100))} %) — часть остатка "
+                    f"в срок без потери маржи не распродать, решение по цене вручную.")
 
     # --- сценарии «что если поднять скидку» ---
     # Модель: +1 п.п. скидки ≈ +elasticity% к заказам. Считаем, как изменится темп,
@@ -1523,7 +1551,10 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     if total_stock > 0 and cur_daily > 0:
         base_days_to_target = need_sell / cur_daily if cur_daily > 0 else None
         for delta in [0, 5, 10, 15, 20, 30]:
-            total_disc = min(85, int(round(avg_disc + delta)))
+            total_disc = int(round(avg_disc + delta))
+            # не предлагаем скидку глубже, чем позволяет маржа
+            if delta > 0 and total_disc > max_disc:
+                continue
             new_daily = cur_daily * (1 + elasticity * delta / 100.0)
             if new_daily <= 0:
                 continue
@@ -1596,6 +1627,10 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             "deadstock": total_deadstock,
             "currentDiscount": round(avg_disc, 1),
             "recommendedDiscount": rec_disc_total,
+            "maxDiscountByMargin": max_disc,
+            "marginLimited": margin_limited,
+            "costSharePct": int(round(cs * 100)),
+            "minMarginPct": int(round(mm * 100)),
             "scenarios": scenarios,
             "sizes": size_summary,
             "verdict": verdict,
@@ -1627,10 +1662,23 @@ def api_wb_season_report():
         elasticity = 2.0
     kw_param = (request.args.get("kw", "") or "").strip()
     keywords = [k.strip().lower() for k in kw_param.split(",") if k.strip()] or None
+    cost_share = None
+    if request.args.get("costSharePct"):
+        try:
+            cost_share = float(request.args.get("costSharePct")) / 100.0
+        except Exception:
+            cost_share = None
+    min_margin = None
+    if request.args.get("minMarginPct"):
+        try:
+            min_margin = float(request.args.get("minMarginPct")) / 100.0
+        except Exception:
+            min_margin = None
     try:
         report = build_seasonal_report(
             category_code=category, keywords=keywords, season_end=season_end,
             target_remain_pct=target_pct, lookback_days=lookback, elasticity=elasticity,
+            cost_share=cost_share, min_margin=min_margin,
         )
         return jsonify({"ok": True, "report": report})
     except Exception as e:
@@ -1665,6 +1713,9 @@ def build_seasonal_report_message(rep):
         f"🎯 Чтобы осталось ≤{int(rep['targetRemainPct'])}% ({s['targetLeftUnits']} шт) → нужно *{s['requiredDaily']} шт/день*",
         f"🧊 В неликвид при текущем темпе: *~{s['deadstock']} шт* (останется {s['projLeftPct']}%)",
         f"🏷 Скидка: сейчас ~{s['currentDiscount']}% → рекомендуем *{s['recommendedDiscount']}%*",
+        f"💰 Маржа: макс скидка *{s.get('maxDiscountByMargin','—')}%* "
+        f"(себест. {s.get('costSharePct','?')}% · мин. маржа {s.get('minMarginPct','?')}%)"
+        + ("  ⚠️ упёрлись в маржу" if s.get("marginLimited") else ""),
         "",
         f"📝 *Вывод:* {s['verdict']}",
     ]

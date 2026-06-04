@@ -142,6 +142,14 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
       <label for="lookback">Окно, дней</label>
       <input id="lookback" type="number" min="3" max="180" step="1" value="28" style="width:90px">
     </div>
+    <div class="fld">
+      <label for="costShare" title="Себестоимость как доля от обычной цены">Себест., %</label>
+      <input id="costShare" type="number" min="0" max="95" step="1" value="35" style="width:90px">
+    </div>
+    <div class="fld">
+      <label for="minMargin" title="Минимальная наценка к себестоимости">Мин. маржа, %</label>
+      <input id="minMargin" type="number" min="0" max="200" step="1" value="10" style="width:90px">
+    </div>
     <button class="btn" id="run" type="button"><span class="spinner"></span><span class="lbl">Сформировать</span></button>
     <button class="btn alt" id="send" type="button" disabled><span class="spinner"></span><span class="lbl">Отправить в отдел продаж</span></button>
     <span class="demo-badge" id="demo">демо-данные · WB-токен не подключён</span>
@@ -215,7 +223,8 @@ var STATUS={ok:["В графике","ok"],accelerate:["Ускорить","accele
 
 function params(){
   return { category:$("category").value, seasonEnd:$("seasonEnd").value,
-    targetPct:$("targetPct").value, lookback:$("lookback").value };
+    targetPct:$("targetPct").value, lookback:$("lookback").value,
+    costSharePct:$("costShare").value, minMarginPct:$("minMargin").value };
 }
 
 function render(rep){
@@ -231,7 +240,8 @@ function render(rep){
     kpi("До конца сезона", rep.daysLeft+" дн", "до "+fmtDate(rep.seasonEnd)) +
     kpi("Нужно продавать", s.requiredDaily+" шт/день", "чтобы осталось ≤"+rep.targetRemainPct+"% ("+fmt(s.targetLeftUnits)+" шт)") +
     kpi("Прогноз неликвида", fmt(s.deadstock)+" шт", "при текущем темпе останется "+s.projLeftPct+"%", s.deadstock>0?"down":"up") +
-    kpi("Скидка", s.recommendedDiscount+"%", "сейчас ~"+s.currentDiscount+"% · рекомендуем");
+    kpi("Скидка", s.recommendedDiscount+"%", "сейчас ~"+s.currentDiscount+"% · рекомендуем") +
+    kpi("Потолок по марже", (s.maxDiscountByMargin!=null?s.maxDiscountByMargin+"%":"—"), (s.marginLimited?"⚠️ упёрлись в маржу":"себест. "+s.costSharePct+"% · маржа "+s.minMarginPct+"%"), s.marginLimited?"down":"");
   // аналитика по размерам (по категории)
   var sizes=s.sizes||[];
   var ztb=$("sizetbody"); ztb.innerHTML="";
@@ -315,13 +325,16 @@ function demoReport(p){
     ["J10003/navy","Шорты",150,3.6,30],["J10004/beige","Шорты",90,0.0,7],["J10005/olive","Шорты",310,1.2,20]];
   var today=new Date(); var end=new Date(p.seasonEnd); var daysLeft=Math.max(1,Math.round((end-today)/864e5));
   var tgt=parseFloat(p.targetPct)/100; var rows=[], tot=0,sold=0,dead=0;
+  var cs=Math.min(0.95,Math.max(0,(parseFloat(p.costSharePct)||35)/100));
+  var mm=Math.max(0,(parseFloat(p.minMarginPct)||10)/100);
+  var maxDisc=Math.min(85,Math.max(0,Math.round((1-cs*(1+mm))*100)));
   var SZ=["S","M","L","XL"], szTot={};
   function recDisc(sStock,sDaily,base){
-    if(sStock<=0) return base;
+    if(sStock<=0) return Math.min(maxDisc,base);
     var req=sStock*(1-tgt)/daysLeft;
-    if(sDaily<=0) return Math.min(85,Math.max(base+30,40));
-    if(req>sDaily) return Math.min(85,Math.round(base+(req/sDaily-1)*100/2));
-    return base;
+    if(sDaily<=0) return Math.min(maxDisc,Math.max(base+30,40));
+    if(req>sDaily) return Math.min(maxDisc,Math.round(base+(req/sDaily-1)*100/2));
+    return Math.min(maxDisc,base);
   }
   function mkSizes(stock,daily,cur){
     // распределяем остаток/продажи по размерам (XL «залёживается»)
@@ -345,8 +358,8 @@ function demoReport(p){
     var need=Math.max(0,stock*(1-tgt)), req=need/daysLeft;
     var ds=Math.max(0,Math.round(proj-stock*tgt));
     var rec=cur, status="ok";
-    if(daily<=0){status="stuck";rec=Math.min(85,Math.max(cur+30,40));}
-    else if(req>daily){status="accelerate";rec=Math.min(85,Math.round(cur+(req/daily-1)*100/2));}
+    if(daily<=0){status="stuck";rec=Math.min(maxDisc,Math.max(cur+30,40));}
+    else if(req>daily){status="accelerate";rec=Math.min(maxDisc,Math.round(cur+(req/daily-1)*100/2));}
     var dos=daily>0?Math.round(stock/daily):null;
     rows.push({vendorCode:a[0],subject:a[1],size:"M",stock:stock,dailyRate:daily,trendPct:[ -12,8,24,0,-5][rows.length],
       daysOfSupply:dos,depletionDate:dos?new Date(today.getTime()+dos*864e5).toISOString():null,
@@ -359,9 +372,10 @@ function demoReport(p){
   var req=Math.max(0,tot*(1-tgt))/daysLeft;
   var need=Math.max(0,tot*(1-tgt)), el=2, base=curDaily>0?need/curDaily:0, scen=[];
   [0,5,10,15,20,30].forEach(function(d){
+    if(d>0 && (13+d)>maxDisc) return;            // не глубже маржи
     var nd=curDaily*(1+el*d/100); if(nd<=0) return;
     var dtt=need/nd, pl=Math.max(0,tot-nd*daysLeft);
-    scen.push({addDiscount:d,discount:Math.min(85,Math.round(13+d)),dailyRate:Math.round(nd*100)/100,
+    scen.push({addDiscount:d,discount:Math.round(13+d),dailyRate:Math.round(nd*100)/100,
       daysToTarget:Math.round(dtt),daysSaved:Math.max(0,Math.round(base-dtt)),
       selloutDate:new Date(today.getTime()+dtt*864e5).toISOString(),
       projLeftPct:tot?Math.round(pl/tot*1000)/10:0,hitsTarget:dtt<=daysLeft});
@@ -375,7 +389,8 @@ function demoReport(p){
     summary:{totalStock:tot,soldRecent:sold,currentDaily:Math.round(curDaily*100)/100,trendPct:6.4,
       daysOfSupply:Math.round(tot/curDaily),depletionDate:new Date(today.getTime()+tot/curDaily*864e5).toISOString(),
       requiredDaily:Math.round(req*100)/100,projLeft:proj,projLeftPct:Math.round(proj/tot*1000)/10,scenarios:scen,sizes:sizeSum,
-      targetLeftUnits:Math.round(tot*tgt),deadstock:Math.max(0,Math.round(proj-tot*tgt)),currentDiscount:13,recommendedDiscount:38,
+      maxDiscountByMargin:maxDisc,marginLimited:38>maxDisc,costSharePct:Math.round(cs*100),minMarginPct:Math.round(mm*100),
+      targetLeftUnits:Math.round(tot*tgt),deadstock:Math.max(0,Math.round(proj-tot*tgt)),currentDiscount:13,recommendedDiscount:Math.min(maxDisc,38),
       verdict:"Не успеваем: сейчас "+(Math.round(curDaily*10)/10)+" шт/день, чтобы к "+p.seasonEnd+" осталось ≤"+p.targetPct+"% нужно "+(Math.round(req*10)/10)+" шт/день. Иначе в неликвид ляжет ~"+Math.max(0,Math.round(proj-tot*tgt))+" шт. Рекомендуемая средняя скидка ~38%. (демо-данные)"},
     rows:rows,count:rows.length};
 }
