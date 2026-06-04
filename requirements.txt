@@ -2,3 +2,4 @@ flask
 httpx
 schedule
 psycopg2-binary
+openpyxl
