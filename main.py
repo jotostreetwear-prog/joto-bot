@@ -1498,57 +1498,34 @@ def _trend_arrow(p):
     return ("▲ +" if p > 0 else "▼ ") + f"{abs(p)}%"
 
 def build_seasonal_report_message(rep):
-    """Короткая сводка для чата отдела продаж: статус + что делать + топ-3 + ссылка.
-
-    Полная таблица по позициям — на странице /season.
-    """
+    """Полный отчёт по сезонной распродаже для чата отдела продаж."""
     s = rep["summary"]
-    title = rep["title"]
-    end = rep["seasonEnd"]
-    days_left = rep["daysLeft"]
-    total = s["totalStock"]
-    cur = s["currentDaily"]
-    req = s["requiredDaily"]
-    dead = s["deadstock"]
-    trend = s.get("trendPct") or 0
-    cur_disc = s["currentDiscount"]
-    rec_disc = s["recommendedDiscount"]
     season_url = (PUBLIC_BASE_URL or "https://web-production-d9c0b.up.railway.app") + "/season"
-
-    head = f"🩳 *{title} · план распродажи* (до {end}, осталось {days_left} дн)"
-    if total <= 0:
-        return head + "\n\n✅ Остатков по категории нет — распродавать нечего."
-
-    trend_txt = (("▲ +" if trend > 0 else ("▼ " if trend < 0 else "→ ")) + f"{abs(trend)}%")
-
-    if cur <= 0:
-        status = (f"⚫ *СТОП — продаж нет*\n"
-                  f"Остаток {total} шт стоит без движения. Старт распродажи: скидка → *{rec_disc}%*.")
-    elif req <= cur:
-        status = (f"🟢 *В графике*: {cur} шт/день\n"
-                  f"К {end} останется ~{s['projLeftPct']}% — цель ≤{int(rep['targetRemainPct'])}% достижима. "
-                  f"Скидку держим ~{rec_disc}%.")
-    else:
-        uplift = round((req / cur - 1) * 100)
-        status = (f"🔴 *НЕ УСПЕВАЕМ*: {cur} шт/день, надо *{req}* (+{uplift}%)\n"
-                  f"→ скидку {cur_disc}% → *{rec_disc}%*, иначе ~{dead} шт уйдёт в неликвид.")
-
-    supply = ("до " + _fmt_date_ru(s["depletionDate"])) if s.get("depletionDate") else "∞"
-    facts = f"Остаток {total} шт · хватит {supply} · динамика {trend_txt}"
-
-    lines = [head, "", status, facts]
-
-    risky = [r for r in rep.get("rows", []) if r.get("deadstock", 0) > 0][:3]
+    dos = s.get("daysOfSupply")
+    dos_txt = (f"~{dos} дн" + (f" (обнулится {_fmt_date_ru(s['depletionDate'])})" if s.get("depletionDate") else "")) if dos else "∞ (нет продаж)"
+    lines = [
+        f"📉 *Распродажа сезона — {rep['title']}*",
+        f"Отчёт на {rep.get('generatedAt','')} · до конца сезона {rep['daysLeft']} дн (до {rep['seasonEnd']})",
+        "",
+        f"📦 Остаток: *{s['totalStock']} шт* · продано за {rep['lookbackDays']} дн: {s['soldRecent']} шт",
+        f"⚡ Темп: *{s['currentDaily']} шт/день* (динамика {_trend_arrow(s['trendPct'])})",
+        f"⏳ Хватит: {dos_txt}",
+        f"🎯 Чтобы осталось ≤{int(rep['targetRemainPct'])}% ({s['targetLeftUnits']} шт) → нужно *{s['requiredDaily']} шт/день*",
+        f"🧊 В неликвид при текущем темпе: *~{s['deadstock']} шт* (останется {s['projLeftPct']}%)",
+        f"🏷 Скидка: сейчас ~{s['currentDiscount']}% → рекомендуем *{s['recommendedDiscount']}%*",
+        "",
+        f"📝 *Вывод:* {s['verdict']}",
+    ]
+    # Топ позиций, которые сильнее всего рискуют лечь в неликвид
+    risky = [r for r in rep.get("rows", []) if r.get("deadstock", 0) > 0][:10]
     if risky:
-        parts = []
+        lines.append("")
+        lines.append("*Что дожимать (топ по неликвиду):*")
         for r in risky:
-            art = r.get("vendorCode") or r.get("nmId")
-            parts.append(f"{art} (→{r['recommendedDiscount']}%)"
-                         if r["recommendedDiscount"] != r["currentDiscount"] else f"{art}")
-        lines.append("Дожать: " + ", ".join(parts))
-
+            disc = f"{r['currentDiscount']}%→{r['recommendedDiscount']}%" if r['recommendedDiscount'] != r['currentDiscount'] else f"{r['currentDiscount']}%"
+            lines.append(f"• {r.get('vendorCode') or r.get('nmId')} — остаток {r['stock']}, {r['dailyRate']}/день, в неликвид {r['deadstock']} шт, скидка {disc}")
     lines.append("")
-    lines.append(f"📊 Подробно: {season_url}")
+    lines.append(f"📊 Полная таблица: {season_url}")
     return "\n".join(lines)
 
 def send_seasonal_report(category_code=None, season_end=None, dialog_id=None):
