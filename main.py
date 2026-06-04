@@ -50,6 +50,11 @@ try:
     SEASON_MIN_MARGIN = float(os.environ.get("SEASON_MIN_MARGIN", "0.10") or 0.10)
 except Exception:
     SEASON_MIN_MARGIN = 0.10
+# Период для расчёта % выкупа (выкупы отстают от заказов — берём «отстоявшееся» окно).
+try:
+    SEASON_BUYOUT_DAYS = int(os.environ.get("SEASON_BUYOUT_DAYS", "60") or 60)
+except Exception:
+    SEASON_BUYOUT_DAYS = 60
 
 def is_silent_dialog(dialog_id):
     """Чаты только для отчётов/алертов: бот туда пишет сам, но не приветствует
@@ -1614,11 +1619,17 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             return min(max_disc, int(round(base + up / elasticity)))
         return min(base, max_disc)                        # темпа хватает
 
-    orders = fetch_wb_orders(start_prev.strftime("%Y-%m-%d"))
+    # % выкупа берём за длинный «отстоявшийся» период (выкупы отстают от заказов),
+    # а темп заказов — за выбранное окно. Так коэффициент выкупа стабильный.
+    buyout_days = max(win, SEASON_BUYOUT_DAYS)
+    buyout_start = today - timedelta(days=buyout_days)
+    orders_from = min(start_prev, buyout_start)
+
+    orders = fetch_wb_orders(orders_from.strftime("%Y-%m-%d"))
     stocks = fetch_wb_stocks()
     prices = fetch_wb_prices()   # цены/скидки по nmId (надёжнее поля Price в остатках)
     try:
-        sales = fetch_wb_sales(start_recent.strftime("%Y-%m-%d"))  # выкупы за окно (для % выкупа)
+        sales = fetch_wb_sales(buyout_start.strftime("%Y-%m-%d"))  # выкупы за 60 дн (для % выкупа)
         sales_available = True
     except Exception:
         sales = []            # лимит/нет доступа — отчёт всё равно строим
@@ -1628,10 +1639,12 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         sz = str(v or "").strip()
         return sz if sz and sz != "0" else "б/р"
 
-    # --- заказы по nmId (+ по размерам): последнее окно и предыдущее (для динамики) ---
+    # --- заказы по nmId (+ по размерам): окно (темп/динамика) и длинное окно (для % выкупа) ---
     recent, prev = {}, {}
     recent_size, prev_size = {}, {}   # nm -> {size -> кол-во}
     cat_size = {}                     # size -> {"recent":n, "prev":n, "stock":q}
+    orders_long = {}                  # nm -> заказов за buyout_days (для % выкупа)
+    cat_orders_long = 0
     for o in orders:
         if not _match_seasonal(o, category_code, keywords):
             continue
@@ -1640,9 +1653,14 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         d = _parse_wb_date(o.get("date"))
         if not d:
             continue
+        nm = o.get("nmId")
+        # длинное окно для коэффициента выкупа
+        if buyout_start <= d <= today:
+            orders_long[nm] = orders_long.get(nm, 0) + 1
+            cat_orders_long += 1
+        # окно анализа (темп и динамика)
         if d > rec_end:
             continue  # за пределами выбранного периода
-        nm = o.get("nmId")
         sz = _norm_size(o.get("techSize"))
         cat_size.setdefault(sz, {"recent": 0, "prev": 0, "stock": 0})
         if d >= start_recent:
@@ -1654,18 +1672,34 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             prev_size.setdefault(nm, {})[sz] = prev_size.setdefault(nm, {}).get(sz, 0) + 1
             cat_size[sz]["prev"] += 1
 
-    # --- продажи (выкупы) по nmId за окно: saleID 'S...' — выкуп, 'R...' — возврат ---
-    sales_recent = {}   # nm -> кол-во выкупов
+    # --- продажи (выкупы): окно (для показа) и длинное окно (для коэффициента выкупа) ---
+    sales_recent = {}   # nm -> выкупов за окно
+    sales_long = {}     # nm -> выкупов за buyout_days
+    cat_sales_long = 0
     for sl in sales:
         if not _match_seasonal(sl, category_code, keywords):
             continue
         if not str(sl.get("saleID") or "").upper().startswith("S"):
-            continue  # учитываем только выкупы (не возвраты)
+            continue  # только выкупы (не возвраты)
         d = _parse_wb_date(sl.get("date"))
-        if not d or d < start_recent or d > rec_end:
+        if not d:
             continue
         nm = sl.get("nmId")
-        sales_recent[nm] = sales_recent.get(nm, 0) + 1
+        if buyout_start <= d <= today:
+            sales_long[nm] = sales_long.get(nm, 0) + 1
+            cat_sales_long += 1
+        if start_recent <= d <= rec_end:
+            sales_recent[nm] = sales_recent.get(nm, 0) + 1
+
+    # коэффициент выкупа: по категории (стабильный) и по артикулу (если достаточно заказов)
+    cat_buyout_frac = (min(1.0, cat_sales_long / cat_orders_long)
+                       if (sales_available and cat_orders_long > 0) else 1.0)
+
+    def _buyout_frac(nm):
+        of = orders_long.get(nm, 0)
+        if of >= 10 and sales_available:
+            return min(1.0, sales_long.get(nm, 0) / of)
+        return cat_buyout_frac
 
     # --- остатки по nmId (+ по размерам, сумма по складам) + мета ---
     stock_by_nm, meta_by_nm = {}, {}
@@ -1699,8 +1733,9 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         stock = stock_by_nm.get(nm, 0)
         sold_recent = recent.get(nm, 0)           # заказы за окно
         sold_prev = prev.get(nm, 0)
-        sales_cnt = sales_recent.get(nm, 0) if sales_available else None  # выкупы за окно
-        buyout_pct = (round(sales_cnt / sold_recent * 100) if (sales_available and sold_recent > 0) else None)
+        sales_cnt = sales_recent.get(nm, 0) if sales_available else None  # выкупы за окно (показ)
+        buyout_frac_nm = _buyout_frac(nm)                                  # коэффициент за 60 дн
+        buyout_pct = round(buyout_frac_nm * 100) if sales_available else None
         daily = sold_recent / win
         daily_prev = sold_prev / win
 
@@ -1711,10 +1746,9 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         else:
             trend = 0.0
 
-        # Чистый темп списания остатка = заказы × % выкупа (возвраты возвращаются на склад).
-        # Если выкуп недоступен — берём заказы как есть.
-        buyout_frac = (buyout_pct / 100.0) if (buyout_pct is not None) else 1.0
-        eff_daily = daily * buyout_frac
+        # Чистый темп списания остатка = заказы × коэффициент выкупа (за 60 дн).
+        # Если выкуп недоступен — _buyout_frac вернёт 1.0 (берём заказы как есть).
+        eff_daily = daily * buyout_frac_nm
 
         dos = (stock / eff_daily) if eff_daily > 0 else None
         depletion = (today + timedelta(days=int(round(dos)))).isoformat() if dos is not None else None
@@ -1774,7 +1808,7 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
             if s_init is not None:
                 cat_initial_size[sz] = cat_initial_size.get(sz, 0) + int(s_init)
             s_daily = s_recent / win
-            s_eff = s_daily * buyout_frac          # чистый темп размера с учётом выкупа
+            s_eff = s_daily * buyout_frac_nm       # чистый темп размера с учётом выкупа
             s_dos = int(round(s_stock / s_eff)) if s_eff > 0 else None
             s_proj_left = max(0.0, s_stock - s_eff * days_left)
             s_pct = round(s_proj_left / s_stock * 100, 1) if s_stock > 0 else 0.0
@@ -1833,13 +1867,13 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     total_sold_since = max(0, total_initial - total_stock) if total_initial is not None else None
     total_recent = sum(r["soldRecent"] for r in rows)
     total_sales = sum((r["salesRecent"] or 0) for r in rows) if sales_available else None
-    total_buyout = (round(total_sales / total_recent * 100) if (sales_available and total_recent > 0) else None)
+    # % выкупа по категории — за длинное окно (стабильный), он же используется в чистом темпе
+    total_buyout = round(cat_buyout_frac * 100) if sales_available else None
     total_prev = sum(prev.values())
     cur_daily = total_recent / win
     prev_daily = total_prev / win
     total_trend = round((cur_daily / prev_daily - 1) * 100, 1) if prev_daily > 0 else (100.0 if cur_daily > 0 else 0.0)
-    # чистый темп списания по категории = заказы × % выкупа (возвраты возвращаются на склад)
-    cat_buyout_frac = (total_buyout / 100.0) if (total_buyout is not None) else 1.0
+    # чистый темп списания по категории = заказы (за окно) × коэффициент выкупа (за 60 дн)
     eff_cur_daily = cur_daily * cat_buyout_frac
 
     # цель «оставить ≤target%» — от фактического начального остатка (если есть), иначе от текущего
@@ -2100,7 +2134,7 @@ def build_seasonal_report_message(rep):
         + (f" ({_fmt_date_ru(rep['periodStart'])}–{_fmt_date_ru(rep['periodEnd'])})" if rep.get('periodStart') else "")
         + f": заказов {s['soldRecent']} шт"
         + (f" · продаж (выкупов) {s['salesRecent']} шт" if s.get('salesRecent') is not None else "")
-        + (f" · выкуп {s['buyoutPct']}%" if s.get('buyoutPct') is not None else ""),
+        + (f" · выкуп {s['buyoutPct']}% (за 60 дн)" if s.get('buyoutPct') is not None else ""),
     ]
     if s.get("initialStock") is not None:
         lines.append(f"🏭 Начальный остаток (факт приход): *{s['initialStock']} шт* · ушло со склада {s['soldSinceStart']} шт")

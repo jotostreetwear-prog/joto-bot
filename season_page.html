@@ -301,7 +301,7 @@ function paintSummary(s, sizes, rep, row){
   $("catTitle").textContent = "— " + rep.title + (row ? " · " + (row.vendorCode||"") : "");
   $("verdict").textContent = s.verdict || "";
   var trendCls = s.trendPct>0?"up":(s.trendPct<0?"down":"");
-  var buy = (s.buyoutPct!=null) ? kpi("Выкуп", s.buyoutPct+"%", "продажи "+fmt(s.salesRecent)+" / заказы "+fmt(s.soldRecent)+" шт") : "";
+  var buy = (s.buyoutPct!=null) ? kpi("Выкуп", s.buyoutPct+"%", "за 60 дн · учтён в «хватит» и прогнозе") : "";
   $("kpis").innerHTML =
     (s.initialStock!=null ? kpi("Начальный остаток", fmt(s.initialStock)+" шт", "факт приход · ушло со склада "+fmt(s.soldSinceStart)+" шт") : "") +
     kpi("Остаток на складе", fmt(s.totalStock)+" шт", "за "+rep.lookbackDays+" дн"+(rep.periodStart?(" · "+fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)):"")+": заказов "+fmt(s.soldRecent)+(s.salesRecent!=null?(", продаж "+fmt(s.salesRecent)):"")+" шт") +
