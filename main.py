@@ -1225,48 +1225,6 @@ def api_wb_set_prices():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 
-@app.route("/api/wb/token-check", methods=["GET"])
-def api_wb_token_check():
-    """Проверяет, какой WB-токен сейчас активен: читает ли он карточки и
-    разрешена ли запись (cards/update). Сам токен НЕ раскрывается."""
-    if not WB_API_TOKEN:
-        return jsonify({"ok": True, "has_token": False, "verdict": "WB_API_TOKEN не задан в Railway"})
-    out = {"ok": True, "has_token": True, "token_len": len(WB_API_TOKEN)}
-    # чтение
-    try:
-        r = httpx.post(WB_CONTENT_BASE + "/content/v2/get/cards/list",
-                       headers={"Authorization": WB_API_TOKEN},
-                       json={"settings": {"cursor": {"limit": 1}, "filter": {"withPhoto": -1}}}, timeout=30)
-        out["read"] = (r.status_code == 200)
-        out["read_status"] = r.status_code
-    except Exception as e:
-        out["read"] = False
-        out["read_error"] = str(e)
-    # запись: безопасный пустой апдейт (ничего не меняет), смотрим на отказ по scope
-    try:
-        r = httpx.post(WB_CONTENT_BASE + "/content/v2/cards/update",
-                       headers={"Authorization": WB_API_TOKEN}, json=[], timeout=30)
-        body = (r.text or "").lower()
-        if r.status_code == 401 and "read-only" in body:
-            out["write"] = False
-            out["write_reason"] = "Токен «только на чтение» (read-only) — запись запрещена"
-        elif r.status_code in (200, 400):
-            out["write"] = True
-        else:
-            out["write"] = None
-            out["write_status"] = r.status_code
-            out["write_detail"] = (r.text or "")[:200]
-    except Exception as e:
-        out["write"] = None
-        out["write_error"] = str(e)
-    if out.get("write") is True:
-        out["verdict"] = "✅ Токен с записью — редактирование карточек будет работать"
-    elif out.get("write") is False:
-        out["verdict"] = "❌ Токен только на чтение — создайте новый токен «Контент» БЕЗ галочки «Только на чтение»"
-    else:
-        out["verdict"] = "⚠ Не удалось однозначно определить запись — см. write_status/write_detail"
-    return jsonify(out)
-
 @app.route("/api/wb/create", methods=["POST"])
 def api_wb_create():
     data = request.get_json(silent=True) or {}
@@ -2346,9 +2304,34 @@ def api_wb_token_check():
         "prices": _ping("https://discounts-prices-api.wildberries.ru"),  # цены и скидки
         "content": _ping("https://content-api.wildberries.ru"),         # карточки
     }
+    # Проверка ЗАПИСИ в Контент: безопасный пустой cards/update ([]), ловим read-only
+    write = None
+    write_reason = ""
+    try:
+        rw = httpx.post("https://content-api.wildberries.ru/content/v2/cards/update",
+                        headers={"Authorization": WB_API_TOKEN}, json=[], timeout=20)
+        body = (rw.text or "").lower()
+        if rw.status_code == 401 and "read-only" in body:
+            write = False
+            write_reason = "Токен «только на чтение» — редактирование карточек запрещено"
+        elif rw.status_code in (200, 400):
+            write = True
+        else:
+            write = None
+            write_reason = f"HTTP {rw.status_code}: {(rw.text or '')[:160]}"
+    except Exception as e:
+        write_reason = str(e)[:160]
+    if write is True:
+        verdict = "✅ Токен с записью — редактирование карточек будет работать"
+    elif write is False:
+        verdict = "❌ Токен только на чтение — создайте токен «Контент» БЕЗ галочки «Только на чтение»"
+    else:
+        verdict = "⚠ Запись не определена: " + write_reason
     return jsonify({
         "ok": all(v.get("ok") for v in cats.values()),
         "categories": cats,
+        "content_write": write,
+        "verdict": verdict,
         "hint": "statistics — распродажа (остатки/заказы), prices — цены, content — карточки",
     })
 
