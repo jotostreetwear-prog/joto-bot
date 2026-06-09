@@ -62,7 +62,8 @@ class NKNotConfigured(NKError):
 # ===================== СОСТОЯНИЕ / ДИАГНОСТИКА =====================
 
 def nk_configured():
-    return bool((NK_API_KEY or NK_TOKEN) and NK_PARTY_ID)
+    # party_id необязателен — для запроса своих товаров обычно хватает apikey
+    return bool(NK_API_KEY or NK_TOKEN)
 
 
 def nk_status():
