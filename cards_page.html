@@ -212,28 +212,18 @@ td textarea{min-height:40px}
       </div>
     </div>
 
-    <div class="block" id="charcsBlock" hidden>
-      <h2>2 · Характеристики (общие для всех новых карточек)</h2>
-      <button class="btn secondary sm" id="loadCharcsBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить характеристики категории</span></button>
-      <div class="charcs" id="charcsBox"></div>
-      <p class="note">Заполните хотя бы обязательные (отмечены «обязательно»). Значение применится ко всем создаваемым карточкам.</p>
-    </div>
+    <div class="block" id="nkBlock" style="border-color:var(--accent)">
+      <h2>2 · Создание из Честного ЗНАка (автоматически)</h2>
+      <p class="note" style="margin-top:0">Загрузите Excel-файл из ЧЗ (после присвоения ГТИНов) — по каждому артикулу
+        автоматически подтянутся <b>размеры, баркоды (ГТИН), состав, цвет, ТНВЭД и наименование</b>.
+        Состав, цвет и ТНВЭД сами проставятся в характеристики карточки.</p>
 
-    <div class="block" id="nkBlock">
-      <h2>3 · Баркоды</h2>
-      <p class="note" style="margin-top:0">Баркоды можно <b>сгенерировать в Wildberries</b> (кнопка в таблице ниже),
-        получить <b>ГТИНы из Честного ЗНАка</b> по API, либо <b>загрузить файл из Честного ЗНАка</b> —
-        тогда таблица заполнится автоматически (артикул + ГТИН).</p>
-
-      <div style="margin-top:14px">
-        <label class="label">Файл из Честного ЗНАка (Excel-шаблон НК, .xlsx)</label>
+      <div style="margin-top:12px">
+        <label class="label">Файл из Честного ЗНАка (.xlsx)</label>
         <div class="row" style="margin-top:6px">
           <input type="file" id="nkFile" accept=".xlsx" style="flex:1;min-width:220px">
-          <button class="btn secondary" id="nkFileBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить файл и заполнить таблицу</span></button>
+          <button class="btn" id="nkFileBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить файл из ЧЗ</span></button>
         </div>
-        <p class="note">Берём артикул («Модель / артикул производителя»), размер и присвоенный ГТИН
-          (из «Кода товара» или «Результата обработки»). Одна карточка = один артикул со всеми размерами.
-          Грузите файл уже <b>после присвоения ГТИНов</b> в ЧЗ.</p>
         <div class="status" id="nkFileResult"></div>
         <div id="filePreview" style="margin-top:12px"></div>
         <button class="btn accent" id="createFromFileBtn" type="button" style="margin-top:12px;display:none">
@@ -241,39 +231,17 @@ td textarea{min-height:40px}
         </button>
         <div class="status" id="fileCreateStatus"></div>
       </div>
-
-      <div id="nkStatus" class="muted" style="margin-top:14px">Проверяю настройку Честного ЗНАка…</div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn secondary" id="nkCreateBtn" type="button" disabled>
-          <span class="spin"></span><span class="lbl">Создать ГТИНы в Честном ЗНАке по API</span>
-        </button>
-      </div>
-      <div class="status" id="nkResult"></div>
+      <p class="note">Перед созданием выберите категорию WB в блоке 1.</p>
     </div>
 
-    <div class="block">
-      <h2>4 · Карточки</h2>
-      <div class="tbl-wrap">
-        <table id="createTable">
-          <thead><tr>
-            <th style="width:160px">Артикул *</th>
-            <th style="width:200px">Название *</th>
-            <th>SEO-описание</th>
-            <th style="width:150px">Баркод</th>
-            <th style="width:40px"></th>
-          </tr></thead>
-          <tbody id="createBody"></tbody>
-        </table>
-      </div>
-      <div class="row" style="margin-top:12px;gap:8px">
-        <button class="btn secondary sm" id="addRowBtn" type="button">＋ Добавить строку</button>
-        <button class="btn secondary sm" id="genBarcodesBtn" type="button"><span class="spin"></span><span class="lbl">Сгенерировать баркоды (WB)</span></button>
-      </div>
-      <button class="btn accent" id="createBtn" type="button" style="margin-top:16px">
-        <span class="spin"></span><span class="lbl">Создать карточки на WB</span>
-      </button>
-      <div class="status" id="createStatus"></div>
+    <div class="block" id="charcsBlock" hidden>
+      <h2>3 · Доп. характеристики (необязательно)</h2>
+      <p class="note" style="margin-top:0">Состав, цвет и ТНВЭД подтягиваются из файла автоматически. Здесь можно
+        добавить недостающие обязательные характеристики категории (применятся ко всем карточкам).</p>
+      <button class="btn secondary sm" id="loadCharcsBtn" type="button" style="margin-top:8px"><span class="spin"></span><span class="lbl">Загрузить характеристики категории</span></button>
+      <div class="charcs" id="charcsBox"></div>
     </div>
+
   </section>
 </div>
 
@@ -567,32 +535,6 @@ function collectCharcs(){
   return out;
 }
 
-function addRow(){
-  var tr=document.createElement("tr");
-  tr.innerHTML='<td><input type="text" class="c-vc" autocomplete="off"></td>'
-    +'<td><input type="text" class="c-title" autocomplete="off"></td>'
-    +'<td><textarea class="c-desc"></textarea></td>'
-    +'<td><input type="text" class="c-bar" autocomplete="off"></td>'
-    +'<td><button class="del-row" type="button">×</button></td>';
-  tr.querySelector(".del-row").addEventListener("click",function(){ tr.remove(); });
-  $("createBody").appendChild(tr);
-}
-$("addRowBtn").addEventListener("click",function(){ addRow(); fit(); });
-for(var i=0;i<3;i++) addRow();
-
-/* Баркоды Wildberries (сгенерировать в пустые строки) */
-$("genBarcodesBtn").addEventListener("click",async function(){
-  var rows=$("createBody").querySelectorAll("tr");
-  var empties=[]; rows.forEach(function(r){ var b=r.querySelector(".c-bar"); if(!b.value.trim()) empties.push(b); });
-  if(empties.length===0){ alert("Все строки уже с баркодами"); return; }
-  spinOn($("genBarcodesBtn"),true,"…");
-  try{
-    var j=await api("/api/wb/barcodes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({count:empties.length})});
-    if(!j.ok||!j.barcodes){ alert("Ошибка: "+(j.error||"")); return; }
-    empties.forEach(function(b,i){ if(j.barcodes[i]) b.value=j.barcodes[i]; });
-  }catch(e){ alert("Ошибка генерации"); }
-  finally{ spinOn($("genBarcodesBtn"),false,"Сгенерировать баркоды (WB)"); }
-});
 
 /* Баркоды из ФАЙЛА Честного ЗНАка — группируем по артикулу (мультиразмерные карточки) */
 var FILE_GROUPS=null;
@@ -600,11 +542,11 @@ function cleanTitle(n){ return String(n||"").replace(/,?\s*размер.*$/i,"")
 function renderFilePreview(){
   var arts=Object.keys(FILE_GROUPS);
   if(arts.length===0){ $("filePreview").innerHTML=""; $("createFromFileBtn").style.display="none"; return; }
-  var html='<div class="tbl-wrap"><table><thead><tr><th>Артикул</th><th>Наименование</th><th>Размеры → ГТИН</th></tr></thead><tbody>';
+  var html='<div class="tbl-wrap"><table><thead><tr><th>Артикул</th><th>Наименование</th><th>Цвет</th><th>Состав</th><th>ТНВЭД</th><th>Размеры → ГТИН</th></tr></thead><tbody>';
   arts.forEach(function(a){
     var g=FILE_GROUPS[a];
     var sizes=g.sizes.map(function(s){return esc(s.size||"б/р")+" → "+(s.gtin?esc(s.gtin):"<span style=\"color:var(--err)\">нет ГТИН</span>");}).join("<br>");
-    html+='<tr><td class="pick-vc">'+esc(a)+'</td><td>'+esc(g.title)+'</td><td style="font-family:var(--mono);font-size:12px">'+sizes+'</td></tr>';
+    html+='<tr><td class="pick-vc">'+esc(a)+'</td><td>'+esc(g.title)+'</td><td>'+esc(g.color||"")+'</td><td>'+esc(g.composition||"")+'</td><td style="font-family:var(--mono);font-size:12px">'+esc(g.tnved||"")+'</td><td style="font-family:var(--mono);font-size:12px">'+sizes+'</td></tr>';
   });
   html+='</tbody></table></div>';
   $("filePreview").innerHTML=html;
@@ -622,7 +564,7 @@ $("nkFileBtn").addEventListener("click",async function(){
     FILE_GROUPS={};
     (j.rows||[]).forEach(function(row){
       var a=row.article; if(!a) return;
-      if(!FILE_GROUPS[a]) FILE_GROUPS[a]={title:cleanTitle(row.name), sizes:[]};
+      if(!FILE_GROUPS[a]) FILE_GROUPS[a]={title:cleanTitle(row.name), color:row.color||"", composition:row.composition||"", tnved:row.tnved||"", sizes:[]};
       FILE_GROUPS[a].sizes.push({size:row.size, gtin:row.gtin});
     });
     renderFilePreview();
@@ -641,12 +583,32 @@ $("createFromFileBtn").addEventListener("click",async function(){
   var brand=$("cBrand").value.trim();
   var dims={length:num("cLen"),width:num("cWid"),height:num("cHei"),weightBrutto:num("cWei")};
   var price=num("cPrice");
-  var charcs=collectCharcs();
+  var manualCharcs=collectCharcs();
+  spinOn($("createFromFileBtn"),true,"Готовлю данные…");
+  // загружаем характеристики категории, чтобы авто-проставить Состав/Цвет/ТНВЭД из файла
+  var nameToId={};
+  try{
+    var jc=await api("/api/wb/charcs?subjectId="+sid);
+    if(jc&&jc.ok&&jc.charcs){ jc.charcs.forEach(function(ch){ if(ch.id!=null&&ch.name) nameToId[String(ch.name).toLowerCase().trim()]=ch.id; }); }
+  }catch(e){}
+  function findCharcId(subs){
+    var keys=Object.keys(nameToId);
+    for(var i=0;i<subs.length;i++){ for(var k=0;k<keys.length;k++){ if(keys[k].indexOf(subs[i])>=0) return nameToId[keys[k]]; } }
+    return null;
+  }
+  var compId=findCharcId(["состав"]);
+  var colorId=findCharcId(["цвет"]);
+  var tnvedId=findCharcId(["тнвэд","тн вэд","тн-вэд"]);
   var items=Object.keys(FILE_GROUPS).map(function(a){
     var g=FILE_GROUPS[a];
+    var ch=manualCharcs.slice();
+    function addCharc(id,val){ if(id&&val){ ch.push({id:id, value:[String(val)]}); } }
+    addCharc(compId, g.composition);
+    addCharc(colorId, g.color);
+    addCharc(tnvedId, g.tnved);
     return { subjectID:sid, variants:[{
       brand:brand, title:g.title||a, description:g.title||"", vendorCode:a,
-      dimensions:dims, characteristics:charcs,
+      dimensions:dims, characteristics:ch,
       sizes: g.sizes.map(function(s){
         var sz=String(s.size||"0");
         return { techSize:sz, wbSize:sz, price:price, skus: s.gtin?[s.gtin]:[] };
@@ -662,79 +624,6 @@ $("createFromFileBtn").addEventListener("click",async function(){
   finally{ spinOn($("createFromFileBtn"),false,"Создать карточки из файла на WB"); fit(); }
 });
 
-/* Баркоды из Честного ЗНАка (ГТИНы по API) */
-async function checkNkStatus(){
-  var el=$("nkStatus"),btn=$("nkCreateBtn");
-  try{
-    var j=await api("/api/nk/status");
-    if(j.configured){
-      el.innerHTML="✓ Честный ЗНАК подключён — можно получать ГТИНы."; el.style.color="var(--ok)"; btn.disabled=false;
-    }else{
-      var miss=[]; if(!j.has_api_key) miss.push("NK_API_KEY"); if(!j.has_party_id) miss.push("NK_PARTY_ID");
-      el.innerHTML="ⓘ Честный ЗНАК не подключён (можно вписывать баркоды вручную или генерировать в WB). Для ГТИНов добавьте в Railway: <b>"+miss.join(", ")+"</b>.";
-      el.style.color="var(--ink-2)"; btn.disabled=true;
-    }
-  }catch(e){ el.textContent="Не удалось проверить статус Честного ЗНАка."; btn.disabled=true; }
-  fit();
-}
-$("nkCreateBtn").addEventListener("click",async function(){
-  var sid=parseInt($("createSubj").value,10);
-  var rows=Array.prototype.slice.call($("createBody").querySelectorAll("tr"));
-  var items=[],rowByVc={};
-  rows.forEach(function(r){
-    var vc=r.querySelector(".c-vc").value.trim();
-    if(!vc) return;
-    rowByVc[vc]=r;
-    items.push({ subjectID:sid, variants:[{ vendorCode:vc, title:r.querySelector(".c-title").value.trim(), brand:$("cBrand").value.trim() }] });
-  });
-  if(items.length===0){ showStatus($("nkResult"),false,"Заполните хотя бы артикулы в строках ниже"); return; }
-  spinOn($("nkCreateBtn"),true,"Создаю ГТИНы…");
-  try{
-    var j=await api("/api/nk/create-gtins",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:items})});
-    if(j.ok&&j.gtins){
-      var n=0;
-      Object.keys(j.gtins).forEach(function(vc){ if(rowByVc[vc]){ rowByVc[vc].querySelector(".c-bar").value=j.gtins[vc]; n++; } });
-      showStatus($("nkResult"),true,"Получено и проставлено ГТИНов: "+n+". Теперь создайте карточки на WB.");
-    }else{
-      showStatus($("nkResult"),false,(j.error||"Ошибка")+(j.needs_config?" — добавьте ключи НК в Railway":""));
-    }
-  }catch(e){ showStatus($("nkResult"),false,"Не удалось связаться с сервером"); }
-  finally{ spinOn($("nkCreateBtn"),false,"Создать ГТИНы в Честном ЗНАке и подставить"); }
-});
-
-$("createBtn").addEventListener("click",async function(){
-  var sid=parseInt($("createSubj").value,10);
-  if(!sid){ showStatus($("createStatus"),false,"Выберите категорию"); return; }
-  var brand=$("cBrand").value.trim();
-  var dims={length:num("cLen"),width:num("cWid"),height:num("cHei"),weightBrutto:num("cWei")};
-  var price=num("cPrice"); var size=$("cSize").value.trim()||"0";
-  var charcs=collectCharcs();
-  var items=[];
-  var bad=false;
-  $("createBody").querySelectorAll("tr").forEach(function(r){
-    var vc=r.querySelector(".c-vc").value.trim();
-    var title=r.querySelector(".c-title").value.trim();
-    var desc=r.querySelector(".c-desc").value.trim();
-    var bar=r.querySelector(".c-bar").value.trim();
-    if(!vc&&!title) return;
-    if(!vc||!title){ bad=true; return; }
-    items.push({ subjectID:sid, variants:[{
-      brand:brand, title:title, description:desc, vendorCode:vc,
-      dimensions:dims, characteristics:charcs,
-      sizes:[{ techSize:size, wbSize:size, price:price, skus: bar?[bar]:[] }]
-    }]});
-  });
-  if(bad){ showStatus($("createStatus"),false,"В некоторых строках не заполнены Артикул или Название"); return; }
-  if(items.length===0){ showStatus($("createStatus"),false,"Добавьте хотя бы одну карточку"); return; }
-
-  spinOn($("createBtn"),true,"Создаю на WB…");
-  try{
-    var j=await api("/api/wb/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:items})});
-    if(j.ok) showStatus($("createStatus"),true,"Отправлено на создание карточек: "+j.created+". Проверьте статус в кабинете WB через 1–2 минуты.");
-    else showStatus($("createStatus"),false,j.error||"Ошибка создания");
-  }catch(e){ showStatus($("createStatus"),false,"Не удалось связаться с сервером"); }
-  finally{ spinOn($("createBtn"),false,"Создать карточки на WB"); }
-});
 
 /* тема */
 (function(){
@@ -745,7 +634,6 @@ $("createBtn").addEventListener("click",async function(){
 })();
 
 updateFieldUI();
-checkNkStatus();
 window.addEventListener("load",fit);
 </script>
 </body>

@@ -2536,6 +2536,11 @@ def api_parse_nk_file():
         color_col = find_col(lambda t, c, m: t.lower() == "цвет")
         size_col = find_col(lambda t, c, m: "размер" in t.lower() and m.lower() == "value")
         result_col = find_col(lambda t, c, m: "результат обработки" in t.lower())
+        comp_col = find_col(lambda t, c, m: t.lower() == "состав")
+        # ТНВЭД: берём «полный» столбец (значение-характеристика), запасной — короткий «Tnved»
+        tnved_col = find_col(lambda t, c, m: "тнвэд" in t.lower() and c.lower() != "tnved" and m.lower() == "value")
+        if tnved_col < 0:
+            tnved_col = find_col(lambda t, c, m: c.lower() == "tnved")
         if article_col < 0:
             return jsonify({"ok": False, "error": "Не найден столбец «Модель / артикул производителя» — это шаблон импорта НК?"}), 400
 
@@ -2565,6 +2570,8 @@ def api_parse_nk_file():
                 "gtin": extract_gtin(r),
                 "name": cell(r, name_col) if name_col >= 0 else "",
                 "color": cell(r, color_col) if color_col >= 0 else "",
+                "composition": cell(r, comp_col) if comp_col >= 0 else "",
+                "tnved": cell(r, tnved_col) if tnved_col >= 0 else "",
             })
         with_gtin = sum(1 for x in out if x["gtin"])
         articles = sorted(set(x["article"] for x in out))
@@ -2575,7 +2582,9 @@ def api_parse_nk_file():
                         "gtin": (gtin_col + 1) if gtin_col >= 0 else None,
                         "size": (size_col + 1) if size_col >= 0 else None,
                         "result": (result_col + 1) if result_col >= 0 else None,
-                        "name": (name_col + 1) if name_col >= 0 else None},
+                        "name": (name_col + 1) if name_col >= 0 else None,
+                        "composition": (comp_col + 1) if comp_col >= 0 else None,
+                        "tnved": (tnved_col + 1) if tnved_col >= 0 else None},
         })
     except Exception as e:
         return jsonify({"ok": False, "error": "Не удалось разобрать файл: " + str(e)}), 500
