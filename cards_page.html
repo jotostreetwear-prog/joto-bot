@@ -219,11 +219,15 @@ td textarea{min-height:40px}
         Состав, цвет и ТНВЭД сами проставятся в характеристики карточки.</p>
 
       <div style="margin-top:12px">
-        <label class="label">Файл из Честного ЗНАка (.xlsx)</label>
-        <div class="row" style="margin-top:6px">
-          <input type="file" id="nkFile" accept=".xlsx" style="flex:1;min-width:220px">
-          <button class="btn" id="nkFileBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить файл из ЧЗ</span></button>
-        </div>
+        <button class="btn" id="nkFetchBtn" type="button"><span class="spin"></span><span class="lbl">⟳ Подтянуть товары из Честного ЗНАка</span></button>
+        <p class="note">Тянет твои товары с присвоенными ГТИНами автоматически (нужен ключ ЧЗ в настройках). Файл загружать не нужно.</p>
+        <details style="margin-top:10px">
+          <summary class="muted" style="cursor:pointer">или загрузить файл вручную (.xlsx)</summary>
+          <div class="row" style="margin-top:8px">
+            <input type="file" id="nkFile" accept=".xlsx" style="flex:1;min-width:220px">
+            <button class="btn secondary" id="nkFileBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить файл</span></button>
+          </div>
+        </details>
         <div class="status" id="nkFileResult"></div>
         <div id="filePreview" style="margin-top:12px"></div>
         <button class="btn accent" id="createFromFileBtn" type="button" style="margin-top:12px;display:none">
@@ -552,6 +556,36 @@ function renderFilePreview(){
   $("filePreview").innerHTML=html;
   $("createFromFileBtn").style.display="";
 }
+function applyNkRows(j){
+  FILE_GROUPS={};
+  (j.rows||[]).forEach(function(row){
+    var a=row.article; if(!a) return;
+    if(!FILE_GROUPS[a]) FILE_GROUPS[a]={title:cleanTitle(row.name), color:row.color||"", composition:row.composition||"", tnved:row.tnved||"", sizes:[]};
+    FILE_GROUPS[a].sizes.push({size:row.size, gtin:row.gtin});
+  });
+  renderFilePreview();
+  var msg="Артикулов: "+(j.articles||Object.keys(FILE_GROUPS).length)+", строк (размеров): "+j.count+", из них с ГТИН: "+j.with_gtin+".";
+  if(j.with_gtin===0) msg+=" ⚠ ГТИНы пустые — товары ещё не промодерированы в ЧЗ (нет присвоенных ГТИНов).";
+  else msg+=" Проверьте предпросмотр и создайте карточки на WB.";
+  showStatus($("nkFileResult"),j.with_gtin>0,msg);
+}
+
+/* Автоматически тянем товары из ЧЗ по API (без файла) */
+$("nkFetchBtn").addEventListener("click",async function(){
+  spinOn($("nkFetchBtn"),true,"Тяну из Честного ЗНАка…");
+  try{
+    var j=await api("/api/wb/nk-products");
+    if(!j.ok){
+      showStatus($("nkFileResult"),false,(j.error||"Ошибка")+(j.needs_config?" — добавьте ключ ЧЗ (NK_API_KEY и NK_PARTY_ID) в Railway":""));
+      return;
+    }
+    if((j.count||0)===0){ showStatus($("nkFileResult"),false,"В Честном ЗНАке не найдено товаров"); return; }
+    applyNkRows(j);
+  }catch(e){ showStatus($("nkFileResult"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("nkFetchBtn"),false,"⟳ Подтянуть товары из Честного ЗНАка"); fit(); }
+});
+
+/* Запасной путь — загрузка файла вручную */
 $("nkFileBtn").addEventListener("click",async function(){
   var f=$("nkFile").files[0];
   if(!f){ showStatus($("nkFileResult"),false,"Выберите файл .xlsx"); return; }
@@ -561,19 +595,9 @@ $("nkFileBtn").addEventListener("click",async function(){
     var r=await fetch("/api/wb/parse-nk-file",{method:"POST",body:fd});
     var j=await r.json();
     if(!j.ok){ showStatus($("nkFileResult"),false,j.error||"Ошибка разбора файла"); return; }
-    FILE_GROUPS={};
-    (j.rows||[]).forEach(function(row){
-      var a=row.article; if(!a) return;
-      if(!FILE_GROUPS[a]) FILE_GROUPS[a]={title:cleanTitle(row.name), color:row.color||"", composition:row.composition||"", tnved:row.tnved||"", sizes:[]};
-      FILE_GROUPS[a].sizes.push({size:row.size, gtin:row.gtin});
-    });
-    renderFilePreview();
-    var msg="Артикулов: "+(j.articles||Object.keys(FILE_GROUPS).length)+", строк (размеров): "+j.count+", из них с ГТИН: "+j.with_gtin+".";
-    if(j.with_gtin===0) msg+=" ⚠ ГТИНы пустые — выгрузите файл из ЧЗ после присвоения ГТИНов.";
-    else msg+=" Проверьте предпросмотр и создайте карточки на WB.";
-    showStatus($("nkFileResult"),j.with_gtin>0,msg);
+    applyNkRows(j);
   }catch(e){ showStatus($("nkFileResult"),false,"Не удалось загрузить файл"); }
-  finally{ spinOn($("nkFileBtn"),false,"Загрузить файл и заполнить таблицу"); fit(); }
+  finally{ spinOn($("nkFileBtn"),false,"Загрузить файл"); fit(); }
 });
 
 $("createFromFileBtn").addEventListener("click",async function(){

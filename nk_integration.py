@@ -187,6 +187,81 @@ def nk_create_unit(gtin, item):
     return nk_request("POST", NK_PATHS["product_create"], json_body=body)
 
 
+# ===================== АВТОЗАГРУЗКА ТОВАРОВ ИЗ НК (без файла) =====================
+# ID атрибутов НК взяты из строки кодов шаблона импорта (см. реальный файл ЧЗ).
+NK_ATTRS = {"article": 13914, "size": 35, "color": 36, "composition": 2483, "tnved": 13933}
+
+def _extract_goods(data):
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        r = data.get("result")
+        if isinstance(r, dict):
+            return r.get("goods") or r.get("data") or r.get("products") or []
+        if isinstance(r, list):
+            return r
+        return data.get("goods") or data.get("data") or data.get("products") or []
+    return []
+
+def _good_attrs_map(g):
+    out = {}
+    attrs = g.get("good_attrs") or g.get("attrs") or g.get("attributes") or []
+    for a in attrs:
+        if not isinstance(a, dict):
+            continue
+        aid = a.get("attr_id") or a.get("id")
+        val = a.get("values") if "values" in a else a.get("value")
+        if isinstance(val, list):
+            parts = []
+            for v in val:
+                parts.append(str(v.get("value")) if isinstance(v, dict) else str(v))
+            val = ", ".join(p for p in parts if p)
+        if aid is not None:
+            out[aid] = (str(val).strip() if val is not None else "")
+    return out
+
+def _good_gtin(g):
+    gt = g.get("gtin") or g.get("gtins")
+    if isinstance(gt, list):
+        if gt and isinstance(gt[0], dict):
+            return str(gt[0].get("gtin") or "")
+        if gt:
+            return str(gt[0])
+        return ""
+    return str(gt) if gt else ""
+
+def nk_fetch_products(limit=1000):
+    """
+    Тянет товары продавца из Национального каталога и нормализует строки
+    в тот же формат, что даёт парсер файла:
+        [{article, size, gtin, name, color, composition, tnved}, ...]
+
+    TODO[NK-DOCS]: сверьте путь product-list, имя параметра поставщика и
+    структуру ответа (goods / good_attrs / gtins) с документацией в ЛК ЧЗ.
+    """
+    if not nk_configured():
+        raise NKNotConfigured("Интеграция с НК не настроена: задайте NK_API_KEY и NK_PARTY_ID.")
+    params = {"limit": limit}
+    if NK_PARTY_ID:
+        params["suppliers[]"] = NK_PARTY_ID
+    data = nk_request("GET", NK_PATHS["product_list"], params=params)
+    rows = []
+    for g in _extract_goods(data):
+        if not isinstance(g, dict):
+            continue
+        attrs = _good_attrs_map(g)
+        rows.append({
+            "article": attrs.get(NK_ATTRS["article"], ""),
+            "size": attrs.get(NK_ATTRS["size"], ""),
+            "color": attrs.get(NK_ATTRS["color"], ""),
+            "composition": attrs.get(NK_ATTRS["composition"], ""),
+            "tnved": attrs.get(NK_ATTRS["tnved"], ""),
+            "name": g.get("good_name") or g.get("name") or "",
+            "gtin": _good_gtin(g),
+        })
+    return rows
+
+
 # ===================== ГЛАВНЫЙ СЦЕНАРИЙ =====================
 
 def create_gtins_for_items(items, create_cards=True):

@@ -2482,6 +2482,23 @@ def api_nk_create_gtins():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 
+@app.route("/api/wb/nk-products", methods=["GET"])
+def api_wb_nk_products():
+    """Автоматически тянет товары из Честного ЗНАка (Национального каталога) по API
+    и отдаёт их в том же формате, что и разбор файла — для автозаполнения создания."""
+    try:
+        rows = nk.nk_fetch_products(limit=2000)
+        with_gtin = sum(1 for r in rows if r.get("gtin"))
+        articles = sorted(set(r["article"] for r in rows if r.get("article")))
+        return jsonify({"ok": True, "rows": rows, "count": len(rows),
+                        "with_gtin": with_gtin, "articles": len(articles)})
+    except nk.NKNotConfigured as e:
+        return jsonify({"ok": False, "error": str(e), "needs_config": True}), 400
+    except nk.NKError as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
 @app.route("/api/wb/parse-nk-file", methods=["POST"])
 def api_parse_nk_file():
     """Разбирает Excel-шаблон Национального каталога (Честный ЗНАК):
