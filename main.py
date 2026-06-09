@@ -2512,7 +2512,14 @@ def api_parse_nk_file():
         ncols = max(len(title_row), len(code_row))
 
         def cell(row, j):
-            return (str(row[j]).strip() if row is not None and j < len(row) and row[j] is not None else "")
+            if row is None or j >= len(row) or row[j] is None:
+                return ""
+            v = row[j]
+            # Excel хранит коды как числа → float «4640515801332.0». Приводим к целому,
+            # иначе при чистке появляется лишний хвостовой ноль.
+            if isinstance(v, float) and v.is_integer():
+                return str(int(v))
+            return str(v).strip()
 
         def find_col(pred):
             for j in range(ncols):
