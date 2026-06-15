@@ -223,7 +223,7 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
     <div class="tablewrap" id="postable">
       <table>
         <thead><tr>
-          <th>Товар</th><th>Артикул</th><th>Нач. остаток<br><span class="sub">факт</span></th>
+          <th>Артикул</th><th>Нач. остаток<br><span class="sub">факт</span></th>
           <th>Остаток<br><span class="sub">на WB</span></th><th>Общее<br><span class="sub">кол-во</span></th><th>К клиенту<br><span class="sub">в пути</span></th><th>От клиента<br><span class="sub">возвраты</span></th>
           <th>Заказов/день</th><th>Динамика</th>
           <th>Хватит до</th><th>Прогноз остатка</th><th>Нужно/день</th>
@@ -321,7 +321,7 @@ function paintSummary(s, sizes, rep, row){
   var buy = (s.buyoutPct!=null) ? kpi("Выкуп", s.buyoutPct+"%", "за 60 дн · учтён в «хватит» и прогнозе") : "";
   $("kpis").innerHTML =
     (s.initialStock!=null ? kpi("Начальный остаток", fmt(s.initialStock)+" шт", "факт приход · ушло со склада "+fmt(s.soldSinceStart)+" шт") : "") +
-    kpi("Остаток на складе", fmt(s.totalStock)+" шт", "за "+rep.lookbackDays+" дн"+(rep.periodStart?(" · "+fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)):"")+": заказов "+fmt(s.soldRecent)+(s.salesRecent!=null?(", продаж "+fmt(s.salesRecent)):"")+" шт") +
+    kpi("Остаток на ВБ", fmt(s.totalStock)+" шт", "за "+rep.lookbackDays+" дн"+(rep.periodStart?(" · "+fmtDate(rep.periodStart)+"–"+fmtDate(rep.periodEnd)):"")+": заказов "+fmt(s.soldRecent)+(s.salesRecent!=null?(", продаж "+fmt(s.salesRecent)):"")+" шт") +
     buy +
     kpi("Темп продаж", s.currentDaily+" шт/день", "динамика к пред. периоду", trendCls, trendHtml(s.trendPct)) +
     kpi("Хватит остатка", (s.daysOfSupply==null?"∞":s.daysOfSupply+" дн"), (s.depletionDate?("обнулится "+fmtDate(s.depletionDate)):"при текущем темпе")+(s.buyoutPct!=null?" · с учётом выкупа "+s.buyoutPct+"%":"")) +
@@ -411,8 +411,7 @@ function renderTotals(){
   function sum(k){ return rows.reduce(function(a,r){return a+(Number(r[k])||0);},0); }
   function r2(x){ return Math.round(x*100)/100; }
   $("tfoot").innerHTML='<tr class="totalrow">'+
-    '<td>ИТОГО</td>'+
-    '<td><span class="sub">'+rows.length+' арт.</span></td>'+
+    '<td>ИТОГО <span class="sub">'+rows.length+' арт.</span></td>'+
     '<td>'+fmt(sum("initialStock"))+'</td>'+
     '<td><b>'+fmt(sum("stock"))+'</b></td>'+
     '<td>'+fmt(sum("stockFull"))+'</td>'+
@@ -448,8 +447,7 @@ function render(rep){
     tr.dataset.art=(r.vendorCode||"");
     if(hasSizes){ tr.style.cursor="pointer"; }
     tr.innerHTML =
-      '<td><div class="artcell">'+(hasSizes?'<span class="caret">▸</span>':"")+thumb(r.nmId)+(r.subject?'<span class="sub">'+r.subject+'</span>':"")+'</div></td>'+
-      '<td><span class="art">'+(r.vendorCode||r.nmId||"—")+'</span>'+(hasSizes?'<br><span class="szbtn">▸ размеры</span>':"")+'</td>'+
+      '<td>'+(hasSizes?'<span class="caret">▸</span> ':"")+'<span class="art">'+(r.vendorCode||r.nmId||"—")+'</span>'+(hasSizes?'<br><span class="szbtn">▸ размеры</span>':"")+'</td>'+
       '<td>'+initHtml(r.initialStock,r.soldSinceStart)+'</td>'+
       '<td><b>'+fmt(r.stock)+'</b></td>'+
       '<td>'+(r.stockFull!=null?fmt(r.stockFull):'<span class="sub">—</span>')+'</td>'+
@@ -470,7 +468,7 @@ function render(rep){
     if(hasSizes){
       var det=document.createElement("tr");
       det.className="sizedetail"; det.hidden=true; det.dataset.art=(r.vendorCode||"");
-      det.innerHTML='<td colspan="18">'+sizeMiniTable(r.sizes)+'</td>';
+      det.innerHTML='<td colspan="17">'+sizeMiniTable(r.sizes)+'</td>';
       tb.appendChild(det);
       tr.addEventListener("click",function(){
         det.hidden=!det.hidden;
