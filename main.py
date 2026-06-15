@@ -1706,7 +1706,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
 
     # --- остатки по nmId (+ по размерам, сумма по складам) + мета ---
     stock_by_nm, meta_by_nm = {}, {}
-    stock_nm_size = {}   # nm -> {size -> остаток}
+    stock_nm_size = {}   # nm -> {size -> остаток на ВБ (quantity)}
+    full_nm_size = {}    # nm -> {size -> общее (quantityFull)}
     full_by_nm, toclient_by_nm, fromclient_by_nm = {}, {}, {}  # общее / к клиенту / от клиента
     for s in stocks:
         if not _match_seasonal(s, category_code, keywords):
@@ -1715,13 +1716,16 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         # quantity = доступно к продаже сейчас (как в кабинете WB).
         # НЕ quantityFull — он включает inWayToClient (товар уже продан и уезжает).
         qty = int(s.get("quantity") or 0)
+        qfull = int(s.get("quantityFull") or 0)
         sz = _norm_size(s.get("techSize"))
         stock_by_nm[nm] = stock_by_nm.get(nm, 0) + qty
-        full_by_nm[nm] = full_by_nm.get(nm, 0) + int(s.get("quantityFull") or 0)
+        full_by_nm[nm] = full_by_nm.get(nm, 0) + qfull
         toclient_by_nm[nm] = toclient_by_nm.get(nm, 0) + int(s.get("inWayToClient") or 0)
         fromclient_by_nm[nm] = fromclient_by_nm.get(nm, 0) + int(s.get("inWayFromClient") or 0)
         stock_nm_size.setdefault(nm, {})[sz] = stock_nm_size.setdefault(nm, {}).get(sz, 0) + qty
-        cat_size.setdefault(sz, {"recent": 0, "prev": 0, "stock": 0})["stock"] += qty
+        full_nm_size.setdefault(nm, {})[sz] = full_nm_size.setdefault(nm, {}).get(sz, 0) + qfull
+        cat_size.setdefault(sz, {"recent": 0, "prev": 0, "stock": 0, "full": 0})["stock"] += qty
+        cat_size[sz]["full"] = cat_size[sz].get("full", 0) + qfull
         if nm not in meta_by_nm:
             meta_by_nm[nm] = {
                 "vendorCode": s.get("supplierArticle"),
@@ -1736,7 +1740,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     nm_ids = set(stock_by_nm) | set(recent) | set(prev) | set(meta_by_nm)
     for nm in nm_ids:
         meta = meta_by_nm.get(nm) or order_meta.get(nm) or {}
-        stock = stock_by_nm.get(nm, 0)
+        stock = stock_by_nm.get(nm, 0)            # на ВБ (quantity) — для расчёта «сколько распродать»
+        stock_full = full_by_nm.get(nm, 0)        # общее (quantityFull) — для «на сколько хватит»
         sold_recent = recent.get(nm, 0)           # заказы за окно
         sold_prev = prev.get(nm, 0)
         sales_cnt = sales_recent.get(nm, 0) if sales_available else None  # выкупы за окно (показ)
@@ -1756,7 +1761,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         # Если выкуп недоступен — _buyout_frac вернёт 1.0 (берём заказы как есть).
         eff_daily = daily * buyout_frac_nm
 
-        dos = (stock / eff_daily) if eff_daily > 0 else None
+        # «на сколько хватит» — от ОБЩЕГО количества (quantityFull), а не только от ВБ
+        dos = (stock_full / eff_daily) if eff_daily > 0 else None
         depletion = (today + timedelta(days=int(round(dos)))).isoformat() if dos is not None else None
 
         proj_sales = eff_daily * days_left
@@ -1809,13 +1815,14 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         sizes_seen = set(stock_nm_size.get(nm, {})) | set(recent_size.get(nm, {})) | set(init_sizes)
         for sz in sizes_seen:
             s_stock = stock_nm_size.get(nm, {}).get(sz, 0)
+            s_full = full_nm_size.get(nm, {}).get(sz, 0)   # общее по размеру
             s_recent = recent_size.get(nm, {}).get(sz, 0)
             s_init = init_sizes.get(sz)
             if s_init is not None:
                 cat_initial_size[sz] = cat_initial_size.get(sz, 0) + int(s_init)
             s_daily = s_recent / win
             s_eff = s_daily * buyout_frac_nm       # чистый темп размера с учётом выкупа
-            s_dos = int(round(s_stock / s_eff)) if s_eff > 0 else None
+            s_dos = int(round(s_full / s_eff)) if s_eff > 0 else None   # хватит — от общего
             s_proj_left = max(0.0, s_stock - s_eff * days_left)
             s_pct = round(s_proj_left / s_stock * 100, 1) if s_stock > 0 else 0.0
             s_status = "empty" if s_stock <= 0 else ("stuck" if s_eff <= 0 else "ok")
@@ -1872,6 +1879,7 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
 
     # --- сводка ---
     total_stock = sum(r["stock"] for r in rows)
+    total_full = sum((r.get("stockFull") or 0) for r in rows)   # общее по категории (для «хватит»)
     total_initial = sum(r["initialStock"] for r in rows if r.get("initialStock") is not None) if has_initial else None
     total_sold_since = max(0, total_initial - total_stock) if total_initial is not None else None
     total_recent = sum(r["soldRecent"] for r in rows)
@@ -1894,7 +1902,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     proj_left = max(0.0, round(total_stock - proj_sales))
     proj_left_pct = round(proj_left / total_stock * 100, 1) if total_stock > 0 else 0.0
     total_deadstock = max(0, round(proj_left - target_left_units))
-    dos_total = int(round(total_stock / eff_cur_daily)) if eff_cur_daily > 0 else None
+    # «на сколько хватит» по категории — от ОБЩЕГО количества (quantityFull)
+    dos_total = int(round(total_full / eff_cur_daily)) if eff_cur_daily > 0 else None
 
     # средневзвешенная текущая скидка и рекомендуемая для всей категории
     if total_stock > 0:
@@ -1994,10 +2003,11 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     size_summary = []
     for sz, d in cat_size.items():
         st = d.get("stock", 0)
+        st_full = d.get("full", 0)            # общее по размеру (для «хватит»)
         rc = d.get("recent", 0)
         s_daily = rc / win
         s_eff = s_daily * cat_buyout_frac     # чистый темп размера по категории (с учётом выкупа)
-        s_dos = int(round(st / s_eff)) if s_eff > 0 else None
+        s_dos = int(round(st_full / s_eff)) if s_eff > 0 else None   # хватит — от общего
         s_proj = max(0.0, st - s_eff * days_left)
         s_pct = round(s_proj / st * 100, 1) if st > 0 else 0.0
         s_status = "empty" if st <= 0 else ("stuck" if s_eff <= 0 else "ok")
