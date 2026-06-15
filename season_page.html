@@ -105,6 +105,16 @@ tbody tr:hover{ background:var(--surface-2); }
 .recprice{ color:var(--accent-deep); white-space:nowrap; }
 [data-theme="dark"] .recprice{ color:var(--accent); }
 .filtered-out{ display:none !important; }
+/* Порядок блоков отчёта: сводка → артикулы → размеры/сценарии внизу */
+#report{ display:flex; flex-direction:column; }
+#report .verdict{ order:0; }
+#report #kpis{ order:1; }
+#report #sizehint{ order:2; }
+#report #postable{ order:3; }
+#report #empty{ order:4; }
+#report #sizeblock{ order:5; }
+#report #scenblock{ order:6; }
+#report #methodology{ order:7; }
 /* Таблица позиций — на всю ширину экрана и компактно, чтобы влезали все столбцы */
 #postable{ width:100vw; margin-left:calc(50% - 50vw); border-radius:0; }
 #postable table{ font-size:11px; width:100%; }
