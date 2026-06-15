@@ -1645,6 +1645,7 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     cat_size = {}                     # size -> {"recent":n, "prev":n, "stock":q}
     orders_long = {}                  # nm -> заказов за buyout_days (для % выкупа)
     cat_orders_long = 0
+    order_meta = {}                   # nm -> {vendorCode, subject} из заказов (для позиций без остатка)
     for o in orders:
         if not _match_seasonal(o, category_code, keywords):
             continue
@@ -1654,6 +1655,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         if not d:
             continue
         nm = o.get("nmId")
+        if nm not in order_meta and o.get("supplierArticle"):
+            order_meta[nm] = {"vendorCode": o.get("supplierArticle"), "subject": o.get("subject")}
         # длинное окно для коэффициента выкупа
         if buyout_start <= d <= today:
             orders_long[nm] = orders_long.get(nm, 0) + 1
@@ -1732,7 +1735,7 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
     rows = []
     nm_ids = set(stock_by_nm) | set(recent) | set(prev) | set(meta_by_nm)
     for nm in nm_ids:
-        meta = meta_by_nm.get(nm, {})
+        meta = meta_by_nm.get(nm) or order_meta.get(nm) or {}
         stock = stock_by_nm.get(nm, 0)
         sold_recent = recent.get(nm, 0)           # заказы за окно
         sold_prev = prev.get(nm, 0)
