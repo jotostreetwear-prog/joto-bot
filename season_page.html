@@ -187,7 +187,6 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
       <input id="periodEnd" type="date">
     </div>
     <button class="btn" id="run" type="button"><span class="spinner"></span><span class="lbl">Сформировать</span></button>
-    <button class="btn alt" id="send" type="button" disabled><span class="spinner"></span><span class="lbl">Отправить в отдел продаж</span></button>
     <span class="demo-badge" id="demo">демо-данные · WB-токен не подключён</span>
   </div>
   <p class="note" id="note"></p>
@@ -250,7 +249,9 @@ function fit(){ try{ if (typeof BX24 !== "undefined" && BX24.fitWindow) BX24.fit
 })();
 
 var $ = function(id){ return document.getElementById(id); };
-var runBtn=$("run"), sendBtn=$("send"), note=$("note"), demo=$("demo");
+var runBtn=$("run"), note=$("note"), demo=$("demo");
+// кнопка отправки убрана — заглушка, чтобы остальной JS не падал
+var sendBtn={ disabled:false, classList:{toggle:function(){}}, addEventListener:function(){} };
 var lastReport = null;
 
 function setLoading(btn,on){ btn.classList.toggle("loading",on); btn.disabled=on; }
