@@ -1332,25 +1332,19 @@ def _vendor_variants(vendor):
     return variants
 
 def load_initial_stock():
-    """Возвращает lookup {ключ -> item}, где ключи включают перевод цвета RU↔EN.
-    item = {'vendorCode', 'total', 'sizes', ...}. {} если файла нет."""
+    """Возвращает lookup {точный нормализованный vendorCode -> item}.
+    Сопоставление ТОЧНОЕ по артикулу (язык WB и приходов совпадает — русский),
+    без перевода цвета, чтобы разные цвета (голубой/синий и т.п.) не путались."""
     try:
         with open(INITIAL_STOCK_PATH, encoding="utf-8") as fh:
             items = (json.load(fh) or {}).get("items", {})
     except Exception:
         return {}
-    lookup = {}
-    for key, item in items.items():
-        for k in _vendor_variants(item.get("vendorCode") or key):
-            lookup.setdefault(k, item)
-    return lookup
+    return {_norm_vendor(item.get("vendorCode") or key): item for key, item in items.items()}
 
 def lookup_initial(initial_stock, vendor):
-    """Ищет начальный остаток по артикулу, перебирая варианты перевода цвета."""
-    for k in _vendor_variants(vendor):
-        if k in initial_stock:
-            return initial_stock[k]
-    return {}
+    """Начальный остаток по точному артикулу (нормализованный vendorCode)."""
+    return initial_stock.get(_norm_vendor(vendor)) or {}
 
 # Кэш ответов WB, чтобы не упираться в лимит (429) при повторных «Сформировать».
 _WB_CACHE = {}
