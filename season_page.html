@@ -409,6 +409,17 @@
   var $ = function(id){ return document.getElementById(id); };
   var DAY = 86400000;
 
+  // Интеграция с Bitrix24: авто-подгон высоты iframe (чтобы не было внутреннего скролла).
+  function fit(){ try{ if (typeof BX24!=="undefined" && BX24.fitWindow) BX24.fitWindow(); }catch(e){} }
+  (function loadBitrix(){
+    var q = location.search || "";
+    var inBitrix = /[?&](DOMAIN|APP_SID|PROTOCOL|AUTH_ID)=/i.test(q) || /bitrix24|bitrix/i.test(document.referrer || "");
+    if (!inBitrix) return;
+    var s = document.createElement("script"); s.src = "//api.bitrix24.com/api/v1/";
+    s.onload = function(){ try{ if (typeof BX24!=="undefined" && BX24.init) BX24.init(function(){ fit(); }); }catch(e){} };
+    document.head.appendChild(s);
+  })();
+
   /* ---------- formatters ---------- */
   function nf(n){ if(n==null||isNaN(n)) return "—"; return Math.round(n).toLocaleString("ru-RU"); }
   function nf1(n){ if(n==null||isNaN(n)) return "—"; return (Math.round(n*10)/10).toLocaleString("ru-RU"); }
@@ -763,6 +774,7 @@
     renderSizes(s);
     renderScenarios(s);
     renderMethodology(r,s);
+    fit();
   }
 
   var STATUS_LABEL={ok:"в графике", accelerate:"ускорить", stuck:"завис", empty:"распродан"};
@@ -929,7 +941,7 @@
     if(!tr || !$("tbody").contains(tr)) return;
     var idx=tr.getAttribute("data-idx");
     var detail=$("tbody").querySelector('tr.sizedetail[data-detail="'+idx+'"]');
-    if(detail){ detail.classList.toggle("hide"); tr.classList.toggle("open"); }
+    if(detail){ detail.classList.toggle("hide"); tr.classList.toggle("open"); fit(); }
   });
 
   $("artFilter").addEventListener("change", function(){ if(REPORT) renderDynamic(); });
@@ -954,7 +966,7 @@
   }
   $("theme-toggle").addEventListener("click", function(){
     var cur=document.documentElement.getAttribute("data-theme");
-    applyTheme(cur==="dark"?"light":"dark");
+    applyTheme(cur==="dark"?"light":"dark"); fit();
   });
   (function initTheme(){
     var saved=null; try{ saved=localStorage.getItem("season-theme"); }catch(e){}
