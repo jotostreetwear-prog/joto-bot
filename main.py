@@ -1281,9 +1281,10 @@ def lookup_initial(initial_stock, vendor):
     """Начальный остаток по точному артикулу (нормализованный vendorCode)."""
     return initial_stock.get(_norm_vendor(vendor)) or {}
 
-# Кэш ответов WB, чтобы не упираться в лимит (429) при повторных «Сформировать».
+# Кэш ответов WB, чтобы не упираться в лимит (429) и отдавать отчёт мгновенно.
 _WB_CACHE = {}
-_WB_CACHE_TTL = 180  # сек
+_WB_CACHE_TTL = 600  # сек (10 мин); фон обновляет данные каждые 5 мин
+_WB_DATA_TS = 0.0    # время последней реальной выгрузки из WB
 
 def _wb_cache_get(key):
     v = _WB_CACHE.get(key)
@@ -1292,6 +1293,8 @@ def _wb_cache_get(key):
     return None
 
 def _wb_cache_set(key, data):
+    global _WB_DATA_TS
+    _WB_DATA_TS = time.time()
     _WB_CACHE[key] = (time.time(), data)
 
 def wb_stats_request(path, params=None, timeout=120, retries=3):
@@ -1321,11 +1324,12 @@ def wb_stats_request(path, params=None, timeout=120, retries=3):
         except Exception:
             return []
 
-def fetch_wb_stocks():
+def fetch_wb_stocks(force=False):
     """Актуальный срез остатков по всем складам (с кэшем)."""
-    cached = _wb_cache_get("stocks")
-    if cached is not None:
-        return cached
+    if not force:
+        cached = _wb_cache_get("stocks")
+        if cached is not None:
+            return cached
     data = wb_stats_request("/api/v1/supplier/stocks", params={"dateFrom": "2020-01-01"})
     _wb_cache_set("stocks", data)
     return data
@@ -1348,13 +1352,14 @@ def fetch_wb_prices():
             out[nm] = {"price": price, "discount": disc, "discounted": discounted}
     return out
 
-def fetch_wb_prices_goods():
+def fetch_wb_prices_goods(force=False):
     """Сырой список номенклатур из WB Prices API (с пагинацией, с кэшем). [] если нет доступа."""
     if not WB_API_TOKEN:
         return []
-    cached = _wb_cache_get("prices_goods")
-    if cached is not None:
-        return cached
+    if not force:
+        cached = _wb_cache_get("prices_goods")
+        if cached is not None:
+            return cached
     goods_all = []
     offset, limit = 0, 1000
     try:
@@ -1391,13 +1396,13 @@ def fetch_wb_prices_by_vendor():
             out[_norm_vendor(vc)] = {"price": price, "discount": disc, "discounted": discounted}
     return out
 
-def fetch_wb_orders(date_from):
+def fetch_wb_orders(date_from, force=False):
     """Все заказы с указанной даты, с пагинацией по lastChangeDate (flag=0).
 
     WB отдаёт заказы пачками (до ~80 000 за ответ). Чтобы охватить весь объём
     (все шорты без потерь), идём по курсору lastChangeDate и дедупим по srid.
     """
-    cached = _wb_cache_get(f"orders:{date_from}")
+    cached = None if force else _wb_cache_get(f"orders:{date_from}")
     if cached is not None:
         return cached
     collected = {}
@@ -1425,10 +1430,10 @@ def fetch_wb_orders(date_from):
     _wb_cache_set(f"orders:{date_from}", result)
     return result
 
-def fetch_wb_sales(date_from):
+def fetch_wb_sales(date_from, force=False):
     """Продажи (выкупы) с указанной даты, пагинация по lastChangeDate, дедуп по saleID.
     Записи с saleID 'S...' — выкуп, 'R...' — возврат."""
-    cached = _wb_cache_get(f"sales:{date_from}")
+    cached = None if force else _wb_cache_get(f"sales:{date_from}")
     if cached is not None:
         return cached
     collected = {}
@@ -1454,6 +1459,26 @@ def fetch_wb_sales(date_from):
     result = list(collected.values())
     _wb_cache_set(f"sales:{date_from}", result)
     return result
+
+def warm_wb_cache():
+    """Фоновый прогрев данных WB (force-обновление кэша), чтобы отчёт строился мгновенно
+    и данные были свежими. Каждый источник — отдельно, ошибка одного не валит остальные."""
+    if not WB_API_TOKEN:
+        return
+    today = datetime.now().date()
+    # та же дата, что у дефолтного отчёта (окно 28 дн + выкуп 60 дн → от today-60)
+    date_from = (today - timedelta(days=max(56, SEASON_BUYOUT_DAYS))).strftime("%Y-%m-%d")
+    for name, fn in (
+        ("stocks", lambda: fetch_wb_stocks(force=True)),
+        ("prices", lambda: fetch_wb_prices_goods(force=True)),
+        ("orders", lambda: fetch_wb_orders(date_from, force=True)),
+        ("sales",  lambda: fetch_wb_sales(date_from, force=True)),
+    ):
+        try:
+            fn()
+        except Exception as e:
+            print(f"warm_wb_cache {name}: {str(e)[:160]}")
+    print(f"WB-кэш прогрет в {datetime.now().strftime('%H:%M:%S')}")
 
 def _match_seasonal(rec, category_code, keywords):
     """Запись относится к нужной категории по артикулу J<код>… или по названию предмета."""
@@ -1967,6 +1992,8 @@ def build_seasonal_report(category_code="10", keywords=None, season_end="2026-08
         "title": title,
         "categoryCode": category_code,
         "generatedAt": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "dataUpdatedAt": (datetime.fromtimestamp(_WB_DATA_TS).strftime("%H:%M:%S") if _WB_DATA_TS else None),
+        "dataUpdatedIso": (datetime.fromtimestamp(_WB_DATA_TS).isoformat() if _WB_DATA_TS else None),
         "seasonEnd": season_end,
         "daysLeft": days_left,
         "lookbackDays": win,
@@ -2449,13 +2476,16 @@ def run_scheduler():
     schedule.every().day.at("06:00").do(check_ctr)        # 09:00 МСК
     schedule.every().day.at("15:00").do(generate_report)  # 18:00 МСК
     schedule.every().day.at("06:00").do(send_seasonal_report)  # 09:00 МСК, ежедневно
+    schedule.every(5).minutes.do(warm_wb_cache)           # фоновое обновление данных WB
+    warm_wb_cache()                                       # прогрев сразу при старте
     print("Планировщик запущен:")
     print("  - CTR проверка каждый день в 09:00 МСК")
     print("  - Отчёт по задачам каждый день в 18:00 МСК")
     print("  - Отчёт по сезонной распродаже каждый день в 09:00 МСК")
+    print("  - Прогрев данных WB каждые 5 минут")
     while True:
         schedule.run_pending()
-        time.sleep(60)
+        time.sleep(30)
 
 def ensure_left_menu_on_start():
     """После деплоя сам привязывает пункт «Карточки WB» в левое меню,

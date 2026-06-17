@@ -104,6 +104,10 @@ tbody tr:hover{ background:var(--surface-2); }
 .thumb:hover{ filter:brightness(1.05); }
 .recprice{ color:var(--accent-deep); white-space:nowrap; }
 [data-theme="dark"] .recprice{ color:var(--accent); }
+.updbar{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin:4px 2px 14px; font-size:13px; color:var(--ink-2); }
+.updbar .upd b{ color:var(--ink-1); }
+.updbar .auto{ display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+.updbar .dot{ display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--good); margin-right:6px; vertical-align:middle; }
 .filtered-out{ display:none !important; }
 /* Порядок блоков отчёта: сводка → артикулы → размеры/сценарии внизу */
 #report{ display:flex; flex-direction:column; }
@@ -196,6 +200,10 @@ tr.sizedetail td{ background:var(--surface-2); padding:10px 14px; }
     <span class="demo-badge" id="demo">демо-данные · WB-токен не подключён</span>
   </div>
   <p class="note" id="note"></p>
+  <div class="updbar" id="updbar" hidden>
+    <span class="upd" id="updinfo"></span>
+    <label class="auto"><input type="checkbox" id="autorefresh" checked> автообновление каждые 5 мин</label>
+  </div>
 
   <div id="report" hidden>
     <div class="verdict"><div class="vh">Вывод и план</div><div id="verdict"></div></div>
@@ -619,21 +627,41 @@ function demoReport(p){
     rows:rows,count:rows.length};
 }
 
-async function run(){
-  note.className="note"; note.textContent="Тяну данные с Wildberries…";
-  setLoading(runBtn,true); sendBtn.disabled=true;
+var lastDataIso=null;
+async function run(silent){
+  if(!silent){ note.className="note"; note.textContent="Тяну данные с Wildberries…"; setLoading(runBtn,true); }
+  sendBtn.disabled=true;
   var p=params();
   try{
     var r=await fetch("/api/wb/season-report?"+new URLSearchParams(p),{cache:"no-store"});
     var j=await r.json();
-    if(j&&j.ok){ demo.classList.remove("show"); render(j.report); note.textContent="Отчёт на "+(j.report.generatedAt||""); }
+    if(j&&j.ok){ demo.classList.remove("show"); render(j.report); if(!silent) note.textContent="Отчёт на "+(j.report.generatedAt||""); updUpdbar(j.report); }
     else{ throw new Error(j&&j.error?j.error:"ошибка"); }
   }catch(e){
-    demo.classList.add("show");
-    render(demoReport(p));
-    note.className="note err"; note.textContent="WB не ответил ("+e.message+") — показаны демо-данные.";
-  }finally{ setLoading(runBtn,false); fit(); }
+    if(!silent){ demo.classList.add("show"); render(demoReport(p));
+      note.className="note err"; note.textContent="WB не ответил ("+e.message+") — показаны демо-данные."; }
+  }finally{ if(!silent) setLoading(runBtn,false); fit(); }
 }
+// панель «обновлено …»
+function updUpdbar(rep){
+  lastDataIso = rep.dataUpdatedIso || null;
+  $("updbar").hidden=false;
+  tickUpdbar();
+}
+function tickUpdbar(){
+  if($("updbar").hidden) return;
+  var t = lastDataIso?new Date(lastDataIso):null;
+  var ago="";
+  if(t){ var sec=Math.max(0,Math.round((Date.now()-t.getTime())/1000));
+    ago = sec<60?(sec+" сек назад"):(sec<3600?(Math.round(sec/60)+" мин назад"):(Math.round(sec/3600)+" ч назад"));
+  }
+  var hhmm = t?t.toLocaleTimeString("ru-RU"):"—";
+  $("updinfo").innerHTML='<span class="dot"></span>Данные WB обновлены: <b>'+hhmm+'</b>'+(ago?(" · "+ago):"");
+}
+setInterval(tickUpdbar, 10000);                 // обновляем «X назад» каждые 10 с
+setInterval(function(){                          // автообновление отчёта каждые 5 мин
+  if(lastReport && $("autorefresh") && $("autorefresh").checked) run(true);
+}, 5*60*1000);
 
 async function send(){
   if(!lastReport) return;
@@ -648,7 +676,7 @@ async function send(){
   finally{ setLoading(sendBtn,false); fit(); }
 }
 
-runBtn.addEventListener("click",run);
+runBtn.addEventListener("click",function(){ run(false); });
 sendBtn.addEventListener("click",send);
 $("artFilter").addEventListener("change",applyArtFilter);
 $("category").addEventListener("change",function(){ $("report").hidden=true; sendBtn.disabled=true; });
