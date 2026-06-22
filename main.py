@@ -2457,11 +2457,25 @@ def api_wb_token_check():
         except Exception as e:
             return {"ok": False, "error": str(e)[:200]}
 
+    def _probe(method, url, **kw):
+        # Проверка по РЕАЛЬНОМУ эндпоинту (надёжнее /ping: у некоторых API ping врёт 401)
+        try:
+            r = httpx.request(method, url, headers={"Authorization": WB_API_TOKEN}, timeout=25, **kw)
+            return {"ok": r.status_code == 200, "httpStatus": r.status_code, "via": "endpoint"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:200]}
+
+    _today = datetime.now().date()
     cats = {
         "statistics": _ping("https://statistics-api.wildberries.ru"),  # остатки, заказы
-        "prices": _ping("https://discounts-prices-api.wildberries.ru"),  # цены и скидки
+        # цены — реальный эндпоинт (тот же, что тянет страница), а не /ping
+        "prices": _probe("GET", "https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter",
+                         params={"limit": 1, "offset": 0}),
         "content": _ping("https://content-api.wildberries.ru"),         # карточки
-        "analytics": _ping("https://seller-analytics-api.wildberries.ru"),  # воронка продаж
+        # аналитика — реальный nm-report (воронка)
+        "analytics": _probe("POST", "https://seller-analytics-api.wildberries.ru/api/v2/nm-report/detail",
+                            json={"period": {"begin": (_today - timedelta(days=7)).strftime("%Y-%m-%d"),
+                                              "end": _today.strftime("%Y-%m-%d")}, "page": 1}),
     }
     # Проверка ЗАПИСИ в Контент: безопасный пустой cards/update ([]), ловим read-only
     write = None
