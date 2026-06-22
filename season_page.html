@@ -1021,7 +1021,7 @@
   });
 
   $("artFilter").addEventListener("change", function(){ if(REPORT) renderDynamic(); });
-  $("run").addEventListener("click", runReport);
+  $("run").addEventListener("click", function(){ runReport(false); });
   $("category").addEventListener("change", function(){ if(REPORT) runReport(); });
   [ "seasonEnd","targetPct","periodStart","periodEnd" ].forEach(function(id){
     $(id).addEventListener("change", function(){ if(REPORT) runReport(); });
