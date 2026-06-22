@@ -1295,6 +1295,7 @@ WB_STATS_BASE = "https://statistics-api.wildberries.ru"
 # Сезонные категории JOTO: код артикула (J<код>...) + ключевые слова предмета на WB.
 SEASONAL_PRESETS = {
     "10": {"title": "Шорты",   "kw": ["шорт"]},
+    "04": {"title": "Джинсы",  "kw": ["джинс"]},
     "02": {"title": "Куртки",  "kw": ["куртк", "пуховик", "парк"]},
     "11": {"title": "Футболки","kw": ["футболк"]},
     "05": {"title": "Худи",    "kw": ["худи", "толстовк"]},
@@ -2247,9 +2248,9 @@ def api_wb_season_report():
     except Exception:
         target_pct = 10.0
     try:
-        lookback = int(request.args.get("lookback", "28"))
+        lookback = int(request.args.get("lookback", "14"))   # окно темпа по умолчанию — 14 дней
     except Exception:
-        lookback = 28
+        lookback = 14
     try:
         elasticity = float(request.args.get("elasticity", "2"))
     except Exception:

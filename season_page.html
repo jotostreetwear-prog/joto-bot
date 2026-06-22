@@ -294,7 +294,7 @@
       <ul>
         <li><b>4 крупные карточки</b> — главное: сколько распродать, нужный темп, рекомендованная скидка и цена.</li>
         <li><b>Остаток на ВБ</b> — доступно к продаже сейчас; <b>Общее</b> — со всем в пути (к клиенту / от клиента). Все расчёты идут <b>от общего</b>.</li>
-        <li><b>Темп</b> — заказов в день; <b>% выкупа</b> — из «Воронки продаж» WB (как в кабинете), иначе считаем сами за 60 дней.</li>
+        <li><b>Темп</b> — заказов в день за последние <b>14 дней</b> (или за выбранный период); <b>% выкупа</b> — из «Воронки продаж» WB, иначе считаем сами за 60 дней.</li>
         <li><b>Воронка</b>: переходы в карточку, конверсия в корзину и в заказ — официальные данные WB.</li>
         <li><b>Хватит до</b> — когда обнулится остаток при текущем <b>чистом темпе</b> (заказы × % выкупа).</li>
         <li><b>Распродать</b> — сколько надо продать, чтобы к концу сезона осталось ≤ 10% от <b>начального прихода</b> с производства.</li>
@@ -317,9 +317,7 @@
       <label for="category">Категория</label>
       <select id="category">
         <option value="10" selected>Шорты (J10)</option>
-        <option value="11">Футболки (J11)</option>
-        <option value="05">Худи (J05)</option>
-        <option value="02">Куртки (J02)</option>
+        <option value="04">Джинсы (J04)</option>
       </select>
     </div>
     <div class="field">
@@ -396,7 +394,7 @@
               <th>Общее</th>
               <th>К клиенту</th>
               <th>От клиента</th>
-              <th>Заказов/день</th>
+              <th id="thOrdersDaily">Заказов/день<br><span class="sub">за 14 дн</span></th>
               <th>Динамика</th>
               <th>Хватит до</th>
               <th>Прогноз остатка</th>
@@ -620,15 +618,14 @@
 
   /* ================= DEMO REPORT ================= */
   function demoReport(){
-    var CAT_NAMES = {"10":"Шорты","11":"Футболки","05":"Худи","02":"Куртки"};
+    var CAT_NAMES = {"10":"Шорты","04":"Джинсы","11":"Футболки","05":"Худи","02":"Куртки"};
     var cat = CAT_NAMES[$("category").value] || $("category").value || "Шорты";
     var sizeSets = {
-      "Шорты":["S","M","L","XL","XXL"], "Футболки":["XS","S","M","L","XL"],
-      "Худи":["S","M","L","XL","XXL"], "Брюки":["28","30","32","34","36"],
-      "Рубашки":["S","M","L","XL","XXL"]
+      "Шорты":["S","M","L","XL","XXL"], "Джинсы":["40","42","44","46","48","50"],
+      "Футболки":["XS","S","M","L","XL"], "Худи":["S","M","L","XL","XXL"]
     };
     var sizes = sizeSets[cat] || ["S","M","L","XL","XXL"];
-    var basePriceByCat = {"Шорты":2490,"Футболки":1690,"Худи":3990,"Брюки":3490,"Рубашки":2890};
+    var basePriceByCat = {"Шорты":2490,"Джинсы":3290,"Футболки":1690,"Худи":3990};
     var basePrice0 = basePriceByCat[cat]||2490;
 
     var ctx = readCtx();
@@ -824,7 +821,7 @@
       {k:"Остаток (общее)", v:nf(s.stockFull), u:"шт", bar:{val:100-soldPct, cls:"warn"}, s:"распродано "+pct(soldPct)},
       {k:"Остаток на ВБ", v:nf(s.stock), u:"шт", s:"к клиенту "+nf(s.toClient)+" · от "+nf(s.fromClient)},
       {k:"% выкупа", v:pct(s.buyoutPct), s:(s.funnelAvailable?"воронка WB":"выкупы / заказы")},
-      {k:"Текущий темп", v:nf1(s.currentDaily), u:"шт/д", cls:trendClass, s:"динамика "+trendArrow+" "+pct(Math.abs(s.trendPct))},
+      {k:"Текущий темп", v:nf1(s.currentDaily), u:"шт/д", cls:trendClass, s:"за "+r.lookbackDays+" дн · динамика "+trendArrow+" "+pct(Math.abs(s.trendPct))},
       {k:"Хватит до", v:supplyTxt, s:dmy(s.depletionDate), scls:supplyClass},
       {k:"До конца сезона", v:nf(r.daysLeft), u:"дн", s:"к "+dmy(r.seasonEnd)},
       {k:"Распродать", v:nf(s.needSell), u:"шт", s:"нужно "+nf1(s.requiredDaily)+" шт/день"},
@@ -845,6 +842,7 @@
       return '<div class="kpi"><div class="k">'+c.k+'</div>'+v+bar+sub+'</div>';
     }).join("");
 
+    var thOD=$("thOrdersDaily"); if(thOD) thOD.innerHTML='Заказов/день<br><span class="sub">за '+r.lookbackDays+' дн</span>';
     renderTable();
     renderSizes(s);
     renderScenarios(s);
