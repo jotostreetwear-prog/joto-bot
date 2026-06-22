@@ -2461,6 +2461,7 @@ def api_wb_token_check():
         "statistics": _ping("https://statistics-api.wildberries.ru"),  # остатки, заказы
         "prices": _ping("https://discounts-prices-api.wildberries.ru"),  # цены и скидки
         "content": _ping("https://content-api.wildberries.ru"),         # карточки
+        "analytics": _ping("https://seller-analytics-api.wildberries.ru"),  # воронка продаж
     }
     # Проверка ЗАПИСИ в Контент: безопасный пустой cards/update ([]), ловим read-only
     write = None
@@ -2505,7 +2506,7 @@ def api_wb_token_check():
         "content_write": write,
         "verdict": verdict,
         "token": token_info,
-        "hint": "statistics — распродажа (остатки/заказы), prices — цены, content — карточки",
+        "hint": "statistics — остатки/заказы, prices — цены, content — карточки, analytics — воронка продаж (% выкупа, переходы)",
     })
 
 PRICE_LIST_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "price_list_source.json")
