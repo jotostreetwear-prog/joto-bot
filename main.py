@@ -75,7 +75,7 @@ BOT_NAME = "Article Generator"
 BOT_CODE = "joto_article_bot"
 
 EVENT_HANDLER_URL = f"{PUBLIC_BASE_URL}/bitrix/events" if PUBLIC_BASE_URL else ""
-# Пункт левого меню Bitrix24 → открывает раздел массовых карточек WB
+# Пункты левого меню Bitrix24 — каждый раздел отдельным пунктом
 LEFT_MENU_HANDLER_URL = f"{PUBLIC_BASE_URL}/cards" if PUBLIC_BASE_URL else ""
 LEFT_MENU_TITLE = "Карточки WB"
 # Отдельный пункт левого меню → раздел распродажи сезона (отчёт по шортам)
@@ -552,6 +552,31 @@ def register_left_menu():
                          "Отчёт по распродаже сезонных товаров (остатки, динамика, скидки)")
     return True
 
+def reset_left_menu():
+    """
+    Полная пересборка пунктов левого меню.
+    Сначала снимает ВСЕ привязки LEFT_MENU (в т.ч. «осиротевшие» после
+    переустановки приложения — они вызывают «Приложение не найдено»),
+    затем привязывает наши пункты заново.
+    """
+    removed = 0
+    try:
+        existing = bx_call("placement.get") or []
+        for pl in existing:
+            if isinstance(pl, dict) and pl.get("placement") == "LEFT_MENU":
+                handler = pl.get("handler")
+                if handler:
+                    try:
+                        bx_call("placement.unbind", {"PLACEMENT": "LEFT_MENU", "HANDLER": handler})
+                        removed += 1
+                    except Exception as e:
+                        print(f"[МЕНЮ] не удалось снять {handler}: {e}")
+    except Exception as e:
+        print(f"[МЕНЮ] placement.get недоступен: {e}")
+    print(f"[МЕНЮ] снято старых привязок LEFT_MENU: {removed}")
+    register_left_menu()
+    return removed
+
 # ===================== ДИАЛОГ: СОЗДАНИЕ АРТИКУЛА =====================
 
 def send_welcome(dialog_id, auth=None):
@@ -967,6 +992,7 @@ def api_article():
 # Требуется WB_API_TOKEN с доступом к категории «Контент».
 
 WB_CONTENT_BASE = "https://content-api.wildberries.ru"
+WB_PRICES_BASE = "https://discounts-prices-api.wildberries.ru"  # API цен и скидок (отдельная категория токена)
 WB_CARDS_PAGE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cards_page.html")
 
 def wb_content_request(method, path, json_body=None, params=None, timeout=60):
@@ -1160,6 +1186,45 @@ def api_wb_bulk_edit():
             msg = "; ".join(str(e.get("errorText") or e.get("additionalErrors") or "ошибка WB") for e in errors)
             return jsonify({"ok": False, "error": msg, "details": errors}), 502
         return jsonify({"ok": True, "updated": len(cards)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+@app.route("/api/wb/set-prices", methods=["POST"])
+def api_wb_set_prices():
+    """Массовое изменение цены через API цен WB (нужна категория токена «Цены и скидки»).
+    items: [{nmID, price}] — price в рублях (целое)."""
+    if not WB_API_TOKEN:
+        return jsonify({"ok": False, "error": "WB_API_TOKEN не задан"}), 400
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    payload = []
+    for it in items:
+        try:
+            nm = int(it.get("nmID"))
+            price = int(round(float(it.get("price"))))
+        except (TypeError, ValueError):
+            continue
+        if nm and price > 0:
+            payload.append({"nmID": nm, "price": price})
+    if not payload:
+        return jsonify({"ok": False, "error": "Нет корректных пар nmID/цена"}), 400
+    try:
+        r = httpx.post(WB_PRICES_BASE + "/api/v2/upload/task",
+                       headers={"Authorization": WB_API_TOKEN},
+                       json={"data": payload}, timeout=60)
+        if r.status_code >= 400:
+            try:
+                detail = r.json()
+            except Exception:
+                detail = r.text[:400]
+            err = detail.get("errorText") if isinstance(detail, dict) else detail
+            if r.status_code in (401, 403):
+                err = "Нет доступа к API цен — у токена нужна категория «Цены и скидки». " + str(err or "")
+            return jsonify({"ok": False, "error": f"WB цены {r.status_code}: {err}"}), 502
+        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if isinstance(body, dict) and body.get("error"):
+            return jsonify({"ok": False, "error": body.get("errorText") or "Ошибка WB цен"}), 502
+        return jsonify({"ok": True, "updated": len(payload)})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 
@@ -2398,9 +2463,49 @@ def api_wb_token_check():
         "content": _ping("https://content-api.wildberries.ru"),         # карточки
         "analytics": _ping("https://seller-analytics-api.wildberries.ru"),  # воронка продаж
     }
+    # Проверка ЗАПИСИ в Контент: безопасный пустой cards/update ([]), ловим read-only
+    write = None
+    write_reason = ""
+    try:
+        rw = httpx.post("https://content-api.wildberries.ru/content/v2/cards/update",
+                        headers={"Authorization": WB_API_TOKEN}, json=[], timeout=20)
+        body = (rw.text or "").lower()
+        if rw.status_code == 401 and "read-only" in body:
+            write = False
+            write_reason = "Токен «только на чтение» — редактирование карточек запрещено"
+        elif rw.status_code in (200, 400):
+            write = True
+        else:
+            write = None
+            write_reason = f"HTTP {rw.status_code}: {(rw.text or '')[:160]}"
+    except Exception as e:
+        write_reason = str(e)[:160]
+    if write is True:
+        verdict = "✅ Токен с записью — редактирование карточек будет работать"
+    elif write is False:
+        verdict = "❌ Токен только на чтение — создайте токен «Контент» БЕЗ галочки «Только на чтение»"
+    else:
+        verdict = "⚠ Запись не определена: " + write_reason
+    # Разбор самого токена (JWT): хвост для сравнения + флаг read-only (бит внутри scope)
+    token_info = {"tail": WB_API_TOKEN[-4:], "len": len(WB_API_TOKEN)}
+    try:
+        import base64, json as _json
+        payload = WB_API_TOKEN.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = _json.loads(base64.urlsafe_b64decode(payload))
+        s = claims.get("s")
+        token_info["scope_s"] = s
+        token_info["sandbox"] = bool(claims.get("t"))
+        if isinstance(s, int):
+            token_info["read_only_in_token"] = bool((s >> 30) & 1)  # бит 30 = «только на чтение»
+    except Exception as e:
+        token_info["decode_error"] = str(e)[:120]
     return jsonify({
         "ok": all(v.get("ok") for v in cats.values()),
         "categories": cats,
+        "content_write": write,
+        "verdict": verdict,
+        "token": token_info,
         "hint": "statistics — остатки/заказы, prices — цены, content — карточки, analytics — воронка продаж (% выкупа, переходы)",
     })
 
@@ -2536,6 +2641,161 @@ def api_nk_create_gtins():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 
+@app.route("/api/wb/nk-probe", methods=["GET"])
+def api_wb_nk_probe():
+    """Диагностика: перебирает возможные методы API НК и показывает статусы.
+    Нужен NK_API_KEY. Помогает найти правильный путь получения товаров."""
+    if not nk.NK_API_KEY and not nk.NK_TOKEN:
+        return jsonify({"ok": False, "error": "NK_API_KEY не задан"}), 400
+    base = nk.NK_BASE_URL
+    headers = {}
+    if nk.NK_TOKEN:
+        headers["Authorization"] = "Bearer " + nk.NK_TOKEN
+    params = {"apikey": nk.NK_API_KEY} if nk.NK_API_KEY else {}
+    # v4/product-list работает, но список пуст. Перебираем статусы и форматы фильтра товара.
+    statuses = ["draft", "moderation", "moderation_declined", "signed", "published",
+                "ready_to_publish", "errored", "archived", "verification", "ready",
+                "handler_error", "new", "all"]
+    cands = [("GET", "/v4/product-list", {"limit": 3})]
+    for s in statuses:
+        cands.append(("GET", "/v4/product-list", {"limit": 3, "good_statuses[]": s}))
+    cands.append(("GET", "/v4/product-list", {"limit": 3, "good_status": "all"}))
+    cands.append(("GET", "/v4/product-list", {"limit": 3, "with_attributes": "true"}))
+    out = []
+    for method, path, extra in cands:
+        p = dict(params); p.update(extra)
+        try:
+            r = httpx.request(method, base + path, params=p, headers=headers, timeout=15)
+            body = (r.text or "")[:300].replace("\n", " ")
+            out.append({"extra": extra, "status": r.status_code, "body": body})
+        except Exception as e:
+            out.append({"extra": extra, "error": str(e)[:120]})
+    return jsonify({"ok": True, "base": base, "results": out})
+
+@app.route("/api/wb/nk-products", methods=["GET"])
+def api_wb_nk_products():
+    """Автоматически тянет товары из Честного ЗНАка (Национального каталога) по API
+    и отдаёт их в том же формате, что и разбор файла — для автозаполнения создания."""
+    try:
+        rows = nk.nk_fetch_products(limit=2000)
+        with_gtin = sum(1 for r in rows if r.get("gtin"))
+        articles = sorted(set(r["article"] for r in rows if r.get("article")))
+        return jsonify({"ok": True, "rows": rows, "count": len(rows),
+                        "with_gtin": with_gtin, "articles": len(articles)})
+    except nk.NKNotConfigured as e:
+        return jsonify({"ok": False, "error": str(e), "needs_config": True}), 400
+    except nk.NKError as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+@app.route("/api/wb/parse-nk-file", methods=["POST"])
+def api_parse_nk_file():
+    """Разбирает Excel-шаблон Национального каталога (Честный ЗНАК):
+    достаёт по каждой строке артикул (Модель / артикул производителя) и
+    присвоенный ГТИН (Код товара). Возвращает строки для заполнения таблицы."""
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"ok": False, "error": "Файл не загружен"}), 400
+    try:
+        import openpyxl
+    except Exception:
+        return jsonify({"ok": False, "error": "На сервере не установлен openpyxl (передеплойте после обновления requirements.txt)"}), 500
+    try:
+        wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
+        ws = None
+        for s in wb.worksheets:
+            if s.title.lower().startswith("import"):
+                ws = s
+                break
+        ws = ws or wb.worksheets[0]
+        rows = list(ws.iter_rows(values_only=True))
+        if len(rows) < 5:
+            return jsonify({"ok": False, "error": "В файле нет данных (ожидается шаблон импорта НК)"}), 400
+
+        title_row = rows[0]
+        code_row = rows[1] if len(rows) > 1 else ()
+        marker_row = rows[2] if len(rows) > 2 else ()
+        ncols = max(len(title_row), len(code_row))
+
+        def cell(row, j):
+            if row is None or j >= len(row) or row[j] is None:
+                return ""
+            v = row[j]
+            # Excel хранит коды как числа → float «4640515801332.0». Приводим к целому,
+            # иначе при чистке появляется лишний хвостовой ноль.
+            if isinstance(v, float) and v.is_integer():
+                return str(int(v))
+            return str(v).strip()
+
+        def find_col(pred):
+            for j in range(ncols):
+                if pred(cell(title_row, j), cell(code_row, j), cell(marker_row, j)):
+                    return j
+            return -1
+
+        import re
+        gtin_col = find_col(lambda t, c, m: c.upper() == "GTIN" or t.lower() == "код товара")
+        article_col = find_col(lambda t, c, m: "артикул производител" in t.lower() and m.lower() == "value")
+        if article_col < 0:
+            article_col = find_col(lambda t, c, m: "артикул" in t.lower() and m.lower() == "value")
+        name_col = find_col(lambda t, c, m: "полное наименование" in t.lower())
+        color_col = find_col(lambda t, c, m: t.lower() == "цвет")
+        size_col = find_col(lambda t, c, m: "размер" in t.lower() and m.lower() == "value")
+        result_col = find_col(lambda t, c, m: "результат обработки" in t.lower())
+        comp_col = find_col(lambda t, c, m: t.lower() == "состав")
+        # ТНВЭД: берём «полный» столбец (значение-характеристика), запасной — короткий «Tnved»
+        tnved_col = find_col(lambda t, c, m: "тнвэд" in t.lower() and c.lower() != "tnved" and m.lower() == "value")
+        if tnved_col < 0:
+            tnved_col = find_col(lambda t, c, m: c.lower() == "tnved")
+        if article_col < 0:
+            return jsonify({"ok": False, "error": "Не найден столбец «Модель / артикул производителя» — это шаблон импорта НК?"}), 400
+
+        def extract_gtin(r):
+            # 1) прямой столбец «Код товара»/GTIN
+            g = cell(r, gtin_col) if gtin_col >= 0 else ""
+            g = re.sub(r"\D", "", g)
+            if g:
+                return g
+            # 2) из текста «Результат обработки»: «Создан код товара 4640515801332 ...»
+            if result_col >= 0:
+                m = re.search(r"код товара\s*(\d{8,14})", cell(r, result_col), re.IGNORECASE)
+                if not m:
+                    m = re.search(r"(\d{12,14})", cell(r, result_col))
+                if m:
+                    return m.group(1)
+            return ""
+
+        out = []
+        for r in rows[4:]:  # данные начинаются с 5-й строки
+            art = cell(r, article_col)
+            if not art:
+                continue
+            out.append({
+                "article": art,
+                "size": cell(r, size_col) if size_col >= 0 else "",
+                "gtin": extract_gtin(r),
+                "name": cell(r, name_col) if name_col >= 0 else "",
+                "color": cell(r, color_col) if color_col >= 0 else "",
+                "composition": cell(r, comp_col) if comp_col >= 0 else "",
+                "tnved": cell(r, tnved_col) if tnved_col >= 0 else "",
+            })
+        with_gtin = sum(1 for x in out if x["gtin"])
+        articles = sorted(set(x["article"] for x in out))
+        return jsonify({
+            "ok": True, "rows": out, "count": len(out), "with_gtin": with_gtin,
+            "articles": len(articles),
+            "columns": {"article": article_col + 1,
+                        "gtin": (gtin_col + 1) if gtin_col >= 0 else None,
+                        "size": (size_col + 1) if size_col >= 0 else None,
+                        "result": (result_col + 1) if result_col >= 0 else None,
+                        "name": (name_col + 1) if name_col >= 0 else None,
+                        "composition": (comp_col + 1) if comp_col >= 0 else None,
+                        "tnved": (tnved_col + 1) if tnved_col >= 0 else None},
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": "Не удалось разобрать файл: " + str(e)}), 500
+
 # ===================== FLASK: СЕРВИСНЫЕ ЭНДПОИНТЫ =====================
 
 @app.route("/admin/bitrix/register", methods=["GET"])
@@ -2553,8 +2813,8 @@ def admin_placement():
     if not BITRIX_CLIENT_SECRET or request.args.get("secret", "") != BITRIX_CLIENT_SECRET:
         return Response("forbidden", status=403)
     try:
-        register_left_menu()
-        return jsonify({"ok": True, "items": [
+        removed = reset_left_menu()
+        return jsonify({"ok": True, "removed_old": removed, "items": [
             {"handler": LEFT_MENU_HANDLER_URL, "title": LEFT_MENU_TITLE},
             {"handler": SEASON_MENU_HANDLER_URL, "title": SEASON_MENU_TITLE},
         ]})
@@ -2601,15 +2861,42 @@ def run_scheduler():
         time.sleep(30)
 
 def ensure_left_menu_on_start():
-    """После деплоя сам привязывает пункт «Карточки WB» в левое меню,
-    если приложение уже установлено (есть сохранённый OAuth-токен)."""
+    """После деплоя привязывает ТОЛЬКО отсутствующие пункты левого меню,
+    не трогая уже привязанные — чтобы их позиция в меню (заданная
+    перетаскиванием) не сбрасывалась при каждом перезапуске."""
     if not load_oauth():
         print("[МЕНЮ] OAuth ещё не настроен — пункт левого меню привяжется при установке")
         return
+    items = [
+        (LEFT_MENU_HANDLER_URL, LEFT_MENU_TITLE,
+         "Массовое создание и редактирование карточек Wildberries"),
+        (SEASON_MENU_HANDLER_URL, SEASON_MENU_TITLE,
+         "Отчёт по распродаже сезонных товаров (остатки, динамика, скидки)"),
+    ]
     try:
-        register_left_menu()
+        existing = set()
+        try:
+            for pl in (bx_call("placement.get") or []):
+                if isinstance(pl, dict) and pl.get("placement") == "LEFT_MENU" and pl.get("handler"):
+                    existing.add(pl["handler"].rstrip("/"))
+        except Exception as e:
+            print(f"[МЕНЮ] placement.get недоступен: {e}")
+        for handler, title, desc in items:
+            if not handler:
+                continue
+            if handler.rstrip("/") in existing:
+                print(f"[МЕНЮ] уже привязан, позиция сохранена: {handler}")
+                continue
+            try:
+                bx_call("placement.bind", {
+                    "PLACEMENT": "LEFT_MENU", "HANDLER": handler,
+                    "TITLE": title, "DESCRIPTION": desc,
+                })
+                print(f"[МЕНЮ] добавлен пункт: {handler} ({title})")
+            except Exception as e:
+                print(f"[МЕНЮ] не удалось привязать {handler}: {e}")
     except Exception as e:
-        print(f"[МЕНЮ] Не удалось привязать пункт левого меню при старте: {e}")
+        print(f"[МЕНЮ] Не удалось проверить пункты левого меню при старте: {e}")
 
 if __name__ == "__main__":
     init_db()

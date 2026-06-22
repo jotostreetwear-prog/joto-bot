@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>JOTO — Массовые карточки WB</title>
+<title>JOTO — Карточки WB</title>
 <style>
 :root{
   --accent:#CCFF00; --accent-ink:#0A0A0A; --accent-deep:#9bc400;
@@ -46,9 +46,9 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-
 .block h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);margin:0 0 14px}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
 .field{display:flex;flex-direction:column;gap:7px;flex:1;min-width:170px}
+.field[hidden]{display:none}
 .field.grow2{flex:2}
 .label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--ink-2)}
-.label .req{color:var(--err)}
 input[type=text],input[type=number],select,textarea{width:100%;font-family:var(--sans);font-size:15px;color:var(--ink);
   background:var(--field);border:1.5px solid var(--line);border-radius:var(--r);padding:11px 13px;outline:none;
   transition:border-color .15s,box-shadow .15s;-webkit-appearance:none;appearance:none}
@@ -74,7 +74,6 @@ select:focus,input:focus,textarea:focus{border-color:var(--line-strong);
 .status.show{display:flex}
 .status.ok{color:var(--ok)}
 .status.err{color:var(--err)}
-/* список артикулов */
 .picker{border:1.5px solid var(--line);border-radius:var(--r);background:var(--field);max-height:300px;overflow:auto}
 .picker-tools{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--field);z-index:2}
 .picker-tools input{flex:1}
@@ -87,7 +86,6 @@ select:focus,input:focus,textarea:focus{border-color:var(--line-strong);
 .pick-row .grow{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .pick-row .grow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .selcount{font-size:13px;color:var(--ink-2);font-weight:600}
-/* таблица создания */
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
 th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
@@ -99,8 +97,6 @@ td textarea{min-height:40px}
 .charc-tag{font-size:10px;color:var(--err);font-weight:700;letter-spacing:.05em}
 #theme-toggle{width:38px;height:38px;border-radius:50%;cursor:pointer;display:grid;place-items:center;font-size:14px;
   background:var(--surface);color:var(--ink-2);border:1.5px solid var(--line)}
-.link{color:var(--ink-2);font-size:13px;text-decoration:none;font-weight:600;border-bottom:1px solid var(--line)}
-.link:hover{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -109,19 +105,18 @@ td textarea{min-height:40px}
     <div class="brand">
       <span class="wordmark">joto</span>
       <div>
-        <h1 class="screen-title">Массовые карточки WB</h1>
+        <h1 class="screen-title">Карточки WB</h1>
         <div class="muted">Создание и редактирование карточек Wildberries</div>
       </div>
     </div>
     <div class="head-right">
-      <a class="link" href="/">← Артикулы</a>
       <button id="theme-toggle" type="button" title="Тема">☾</button>
     </div>
   </header>
 
   <div class="tabs">
-    <button class="tab active" data-mode="edit" type="button">✎ Редактировать массово</button>
-    <button class="tab" data-mode="create" type="button">＋ Создать массово <span style="opacity:.6;font-weight:600">· скоро</span></button>
+    <button class="tab active" data-mode="edit" type="button">✎ Редактирование карточек</button>
+    <button class="tab" data-mode="create" type="button">＋ Создание карточек</button>
   </div>
 
   <!-- ============ РЕДАКТИРОВАНИЕ ============ -->
@@ -148,27 +143,11 @@ td textarea{min-height:40px}
     </div>
 
     <div class="block" id="editFields" hidden>
-      <h2>2 · Что менять</h2>
+      <h2>2 · Что меняем</h2>
       <div class="row">
-        <div class="field">
-          <label class="label" for="fieldSel">Поле</label>
-          <select id="fieldSel">
-            <option value="description">SEO-описание</option>
-            <option value="title">Название</option>
-            <option value="brand">Бренд</option>
-            <option value="vendorCode">Артикул (vendorCode)</option>
-            <option value="subjectID">Категория</option>
-            <option value="characteristic">Характеристика</option>
-            <option value="barcode">Баркод (добавить)</option>
-          </select>
-        </div>
-        <div class="field" id="charcPickWrap" hidden>
-          <label class="label" for="charcSel">Характеристика</label>
-          <select id="charcSel"></select>
-        </div>
-        <div class="field" id="subjPickWrap" hidden>
-          <label class="label" for="subjSel">Новая категория</label>
-          <select id="subjSel"><option value="">— загрузка —</option></select>
+        <div class="field grow2">
+          <label class="label" for="fieldSel">Что меняем</label>
+          <select id="fieldSel"><option value="">— загрузка списка —</option></select>
         </div>
       </div>
 
@@ -177,11 +156,14 @@ td textarea{min-height:40px}
           <label class="label" for="valText">Новое значение</label>
           <textarea id="valText" placeholder="Введите новое значение для всех выбранных карточек"></textarea>
         </div>
-        <div class="field" id="valLineWrap" hidden>
+        <div class="field grow2" id="valCatWrap" hidden>
+          <label class="label" for="subjSel">Новая категория</label>
+          <select id="subjSel"><option value="">— загрузка —</option></select>
+        </div>
+        <div class="field grow2" id="valLineWrap" hidden>
           <label class="label" for="valLine">Новое значение</label>
           <input id="valLine" type="text" autocomplete="off">
         </div>
-        <button class="btn secondary" id="genBarcodeBtn" type="button" hidden><span class="spin"></span><span class="lbl">Сгенерировать баркод</span></button>
       </div>
       <p class="note" id="editNote"></p>
 
@@ -204,10 +186,6 @@ td textarea{min-height:40px}
 
   <!-- ============ СОЗДАНИЕ ============ -->
   <section class="panel" id="panel-create" hidden>
-    <div class="block" style="border-color:var(--accent)">
-      <div style="font-weight:700">Раздел в разработке</div>
-      <p class="note">Массовое создание заработает в полном объёме после подключения ключей Честного ЗНАКа (ГТИНы). Уже сейчас можно создавать карточки, вписав баркоды вручную. Пока рекомендуем пользоваться вкладкой «Редактировать массово».</p>
-    </div>
     <div class="block">
       <h2>1 · Категория и общие поля</h2>
       <div class="row">
@@ -234,49 +212,40 @@ td textarea{min-height:40px}
       </div>
     </div>
 
-    <div class="block" id="charcsBlock" hidden>
-      <h2>2 · Характеристики (общие для всех новых карточек)</h2>
-      <button class="btn secondary sm" id="loadCharcsBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить характеристики категории</span></button>
-      <div class="charcs" id="charcsBox"></div>
-      <p class="note">Заполните хотя бы обязательные (отмечены «*»). Значение применится ко всем создаваемым карточкам.</p>
-    </div>
+    <div class="block" id="nkBlock" style="border-color:var(--accent)">
+      <h2>2 · Создание из Честного ЗНАка (автоматически)</h2>
+      <p class="note" style="margin-top:0">Загрузите Excel-файл из ЧЗ (после присвоения ГТИНов) — по каждому артикулу
+        автоматически подтянутся <b>размеры, баркоды (ГТИН), состав, цвет, ТНВЭД и наименование</b>.
+        Состав, цвет и ТНВЭД сами проставятся в характеристики карточки.</p>
 
-    <div class="block" id="nkBlock">
-      <h2>3 · ГТИНы из Честного ЗНАКа</h2>
-      <div id="nkStatus" class="muted">Проверяю настройку интеграции…</div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn secondary" id="nkCreateBtn" type="button" disabled>
-          <span class="spin"></span><span class="lbl">Создать ГТИНы в Честном ЗНАКе и подставить</span>
+      <div style="margin-top:12px">
+        <button class="btn" id="nkFetchBtn" type="button"><span class="spin"></span><span class="lbl">⟳ Подтянуть товары из Честного ЗНАка</span></button>
+        <p class="note">Тянет твои товары с присвоенными ГТИНами автоматически (нужен ключ ЧЗ в настройках). Файл загружать не нужно.</p>
+        <details style="margin-top:10px">
+          <summary class="muted" style="cursor:pointer">или загрузить файл вручную (.xlsx)</summary>
+          <div class="row" style="margin-top:8px">
+            <input type="file" id="nkFile" accept=".xlsx" style="flex:1;min-width:220px">
+            <button class="btn secondary" id="nkFileBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить файл</span></button>
+          </div>
+        </details>
+        <div class="status" id="nkFileResult"></div>
+        <div id="filePreview" style="margin-top:12px"></div>
+        <button class="btn accent" id="createFromFileBtn" type="button" style="margin-top:12px;display:none">
+          <span class="spin"></span><span class="lbl">Создать карточки из файла на WB</span>
         </button>
+        <div class="status" id="fileCreateStatus"></div>
       </div>
-      <p class="note">Создаёт товары в Национальном каталоге по строкам ниже, получает ГТИНы и
-        автоматически проставляет их в колонку «Баркод». Затем жмите «Создать карточки на WB».</p>
-      <div class="status" id="nkResult"></div>
+      <p class="note">Перед созданием выберите категорию WB в блоке 1.</p>
     </div>
 
-    <div class="block">
-      <h2>4 · Карточки</h2>
-      <div class="tbl-wrap">
-        <table id="createTable">
-          <thead><tr>
-            <th style="width:160px">Артикул *</th>
-            <th style="width:200px">Название *</th>
-            <th>SEO-описание</th>
-            <th style="width:150px">Баркод</th>
-            <th style="width:40px"></th>
-          </tr></thead>
-          <tbody id="createBody"></tbody>
-        </table>
-      </div>
-      <div class="row" style="margin-top:12px;gap:8px">
-        <button class="btn secondary sm" id="addRowBtn" type="button">＋ Добавить строку</button>
-        <button class="btn secondary sm" id="genBarcodesBtn" type="button"><span class="spin"></span><span class="lbl">Сгенерировать баркоды</span></button>
-      </div>
-      <button class="btn accent" id="createBtn" type="button" style="margin-top:16px">
-        <span class="spin"></span><span class="lbl">Создать карточки на WB</span>
-      </button>
-      <div class="status" id="createStatus"></div>
+    <div class="block" id="charcsBlock" hidden>
+      <h2>3 · Доп. характеристики (необязательно)</h2>
+      <p class="note" style="margin-top:0">Состав, цвет и ТНВЭД подтягиваются из файла автоматически. Здесь можно
+        добавить недостающие обязательные характеристики категории (применятся ко всем карточкам).</p>
+      <button class="btn secondary sm" id="loadCharcsBtn" type="button" style="margin-top:8px"><span class="spin"></span><span class="lbl">Загрузить характеристики категории</span></button>
+      <div class="charcs" id="charcsBox"></div>
     </div>
+
   </section>
 </div>
 
@@ -296,10 +265,11 @@ var $=function(id){return document.getElementById(id);};
 function spinOn(btn,on,txt){ if(!btn)return; btn.classList.toggle("loading",on); btn.disabled=on;
   var l=btn.querySelector(".lbl"); if(l&&txt!=null) l.textContent=txt; }
 function showStatus(el,ok,msg){ el.className="status show "+(ok?"ok":"err"); el.textContent=(ok?"✓ ":"⚠ ")+msg; fit(); }
-
 async function api(url,opts){ var r=await fetch(url,opts); return await r.json(); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(ch){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[ch];}); }
+function num(id){ var v=parseFloat($(id).value); return isNaN(v)?0:v; }
 
-/* ---------- Переключение режимов ---------- */
+/* ---------- Переключение вкладок ---------- */
 document.querySelectorAll(".tab").forEach(function(t){
   t.addEventListener("click",function(){
     document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("active");});
@@ -312,7 +282,7 @@ document.querySelectorAll(".tab").forEach(function(t){
 });
 
 /* ============================================================
-   РЕЖИМ РЕДАКТИРОВАНИЯ
+   РЕДАКТИРОВАНИЕ
 ============================================================ */
 var ALL_CARDS=[];          // simplified карточки с WB
 var selected=new Set();    // nmID выбранных
@@ -327,6 +297,7 @@ $("loadBtn").addEventListener("click",async function(){
     $("pickerWrap").hidden=false;
     $("editFields").hidden=(ALL_CARDS.length===0);
     if(ALL_CARDS.length===0) alert("Карточки не найдены");
+    else buildChangeOptions();
   }catch(e){ alert("Не удалось связаться с сервером"); }
   finally{ spinOn($("loadBtn"),false,"Загрузить карточки с WB"); fit(); }
 });
@@ -369,119 +340,63 @@ $("selNone").addEventListener("click",function(){
   selected.clear(); updateSelCount();
 });
 
-/* выбор поля «что менять» */
+/* единый список «что меняем»: основные поля + цена + все характеристики */
 var fieldSel=$("fieldSel");
+var CHARC_NAMES={};   // id -> название характеристики
 fieldSel.addEventListener("change",updateFieldUI);
+
+async function buildChangeOptions(){
+  var base=[["description","SEO-описание"],["title","Название"],["vendorCode","Артикул"],
+            ["subjectID","Категория"],["brand","Бренд"],["price","Цена, ₽"]];
+  var baseHtml='<optgroup label="Основные">'+base.map(function(b){
+    return '<option value="'+b[0]+'">'+b[1]+'</option>';}).join("")+'</optgroup>';
+  fieldSel.innerHTML=baseHtml+'<optgroup label="Характеристики"><option value="" disabled>— загрузка характеристик… —</option></optgroup>';
+  fit();
+  var map={},required={},subjects={};
+  ALL_CARDS.forEach(function(c){
+    (c.characteristics||[]).forEach(function(ch){ if(ch.id!=null) map[ch.id]=ch.name; });
+    if(c.subjectID!=null) subjects[c.subjectID]=true;
+  });
+  var ids=Object.keys(subjects);
+  for(var i=0;i<ids.length;i++){
+    try{
+      var j=await api("/api/wb/charcs?subjectId="+ids[i]);
+      if(j&&j.ok&&j.charcs){ j.charcs.forEach(function(ch){
+        if(ch.id!=null){ map[ch.id]=ch.name; if(ch.required) required[ch.id]=true; }
+      }); }
+    }catch(e){}
+  }
+  CHARC_NAMES=map;
+  var keys=Object.keys(map).sort(function(a,b){
+    var ra=required[a]?0:1, rb=required[b]?0:1;
+    if(ra!==rb) return ra-rb;
+    return String(map[a]).localeCompare(String(map[b]));
+  });
+  var chOpts = keys.length
+    ? keys.map(function(id){ return '<option value="charc:'+id+'">'+esc(map[id])+(required[id]?" *":"")+'</option>'; }).join("")
+    : '<option value="" disabled>— нет (выберите карточки одной категории) —</option>';
+  fieldSel.innerHTML=baseHtml+'<optgroup label="Характеристики">'+chOpts+'</optgroup>';
+  updateFieldUI();
+  fit();
+}
+
 function updateFieldUI(){
-  var f=fieldSel.value;
-  var bigText=(f==="description");
-  $("valTextWrap").hidden=!bigText;
-  $("valLineWrap").hidden=(bigText||f==="subjectID"||f==="characteristic");
-  $("charcPickWrap").hidden=(f!=="characteristic");
-  $("subjPickWrap").hidden=(f!=="subjectID");
-  $("genBarcodeBtn").hidden=(f!=="barcode");
+  var v=fieldSel.value, isCharc=(v.indexOf("charc:")===0);
+  var f=isCharc?"characteristic":v;
+  $("valTextWrap").hidden=(f!=="description");
+  $("valCatWrap").hidden=(f!=="subjectID");
+  $("valLineWrap").hidden=(f==="description"||f==="subjectID"||f==="");
   var note="";
-  if(f==="vendorCode"||f==="barcode") note="⚠ Это поле уникально для каждой карточки — применяйте к одной карточке за раз.";
-  if(f==="subjectID") note="⚠ Wildberries не всегда разрешает смену категории у существующей карточки — при отказе WB вернёт ошибку.";
-  if(f==="characteristic") note="Список характеристик собран из выбранных карточек. Несколько значений вводите через запятую.";
+  if(f==="vendorCode") note="⚠ Артикул уникален для каждой карточки — применяйте к одной карточке за раз.";
+  else if(f==="subjectID") note="⚠ Wildberries не всегда разрешает смену категории у существующей карточки.";
+  else if(f==="price") note="Цена меняется через API цен WB (нужен доступ «Цены и скидки»). Укажите новую цену в рублях.";
+  else if(isCharc) note="Несколько значений вводите через запятую.";
   $("editNote").textContent=note;
-  if(f==="characteristic") fillCharcSelect();
+  $("valLine").placeholder=(f==="price")?"например 2990":"новое значение";
   if(f==="subjectID") loadSubjectsInto($("subjSel"));
   fit();
 }
-function fillCharcSelect(){
-  var map={};
-  selectedCards().forEach(function(c){
-    (c.characteristics||[]).forEach(function(ch){ if(ch.id!=null) map[ch.id]=ch.name; });
-  });
-  var html=Object.keys(map).map(function(id){return '<option value="'+id+'">'+esc(map[id])+'</option>';}).join("");
-  $("charcSel").innerHTML=html||'<option value="">— у выбранных карточек нет характеристик —</option>';
-}
 
-/* генерация одного баркода */
-$("genBarcodeBtn").addEventListener("click",async function(){
-  spinOn($("genBarcodeBtn"),true,"…");
-  try{
-    var j=await api("/api/wb/barcodes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({count:1})});
-    if(j.ok&&j.barcodes&&j.barcodes.length){ $("valLine").value=j.barcodes[0]; }
-    else alert("Не удалось получить баркод: "+(j.error||""));
-  }catch(e){ alert("Ошибка генерации баркода"); }
-  finally{ spinOn($("genBarcodeBtn"),false,"Сгенерировать баркод"); }
-});
-
-function selectedCards(){ return ALL_CARDS.filter(function(c){return selected.has(c.nmID);}); }
-
-var FIELD_LABELS={description:"SEO-описание",title:"Название",brand:"Бренд",vendorCode:"Артикул",subjectID:"Категория",characteristic:"Характеристика",barcode:"Баркод"};
-function truncate(s){ s=String(s==null?"":s); return s.length>44?s.slice(0,44)+"…":s; }
-function findCharc(card,id){ var a=card.characteristics||[]; for(var i=0;i<a.length;i++){ if(a[i].id===id) return a[i]; } return null; }
-
-/* шаг 1: собрать и проверить изменение */
-function buildEditPayload(){
-  var cards=selectedCards();
-  if(cards.length===0){ showStatus($("editStatus"),false,"Не выбрано ни одной карточки"); return null; }
-  var f=fieldSel.value;
-  var value=(f==="description")?$("valText").value:$("valLine").value;
-  var charcId=null,charcName=null;
-  if(f==="characteristic"){
-    charcId=parseInt($("charcSel").value,10);
-    charcName=$("charcSel").selectedOptions[0]?$("charcSel").selectedOptions[0].textContent:null;
-    if(!charcId){ showStatus($("editStatus"),false,"Выберите характеристику"); return null; }
-    value=$("valLine").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
-    if(value.length===0){ showStatus($("editStatus"),false,"Введите значение характеристики"); return null; }
-  }
-  if(f==="subjectID"){ value=$("subjSel").value; if(!value){ showStatus($("editStatus"),false,"Выберите категорию"); return null; } }
-  if(f!=="characteristic" && f!=="subjectID" && (value===""||value==null)){ showStatus($("editStatus"),false,"Введите новое значение"); return null; }
-  return { cards:cards, field:f, value:value, charcId:charcId, charcName:charcName, label:FIELD_LABELS[f]||f };
-}
-
-function previewText(p){
-  var f=p.field, lines=[];
-  var newv=Array.isArray(p.value)?p.value.join(", "):p.value;
-  if(f==="subjectID"){ var opt=$("subjSel").selectedOptions[0]; newv=opt?opt.textContent:p.value; }
-  p.cards.slice(0,8).forEach(function(c){
-    var oldv;
-    if(f==="characteristic"){ var ch=findCharc(c,p.charcId); oldv=ch?(ch.value||[]).join(", "):"—"; }
-    else if(f==="subjectID"){ oldv=c.subjectName||"—"; }
-    else if(f==="barcode"){ oldv=(c.barcodes||[]).join(", ")||"нет"; }
-    else { oldv=c[f]; }
-    if(f==="barcode") lines.push(c.vendorCode+":  + "+newv);
-    else lines.push(c.vendorCode+":  "+truncate(oldv||"—")+"  →  "+truncate(newv));
-  });
-  if(p.cards.length>8) lines.push("…и ещё "+(p.cards.length-8)+" карточек");
-  return lines.join("\n");
-}
-
-var pendingPayload=null;
-$("applyBtn").addEventListener("click",function(){
-  var p=buildEditPayload(); if(!p) return;
-  pendingPayload=p;
-  var warn=((p.field==="barcode"||p.field==="vendorCode")&&p.cards.length>1)
-    ? "  ⚠ Это поле уникально для каждой карточки — не задавайте одно значение нескольким!" : "";
-  $("confirmText").innerHTML="Будет изменено поле «"+esc(p.label)+"» у <b>"+p.cards.length+"</b> карточк(и) на Wildberries."+esc(warn);
-  $("confirmPreview").textContent=previewText(p);
-  $("confirmBox").style.display="block";
-  $("editStatus").className="status";
-  fit();
-});
-$("confirmCancel").addEventListener("click",function(){ $("confirmBox").style.display="none"; pendingPayload=null; fit(); });
-
-/* шаг 2: подтверждение и отправка на WB */
-$("confirmApply").addEventListener("click",async function(){
-  if(!pendingPayload) return;
-  var p=pendingPayload;
-  var body={ cards:p.cards.map(function(c){return c.raw;}), field:p.field, value:p.value, charcId:p.charcId, charcName:p.charcName };
-  spinOn($("confirmApply"),true,"Сохраняю на WB…");
-  try{
-    var j=await api("/api/wb/bulk-edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    if(j.ok){ showStatus($("editStatus"),true,"Обновлено карточек: "+j.updated+". Изменения отправлены на Wildberries."); $("confirmBox").style.display="none"; pendingPayload=null; }
-    else showStatus($("editStatus"),false,j.error||"Ошибка обновления");
-  }catch(e){ showStatus($("editStatus"),false,"Не удалось связаться с сервером"); }
-  finally{ spinOn($("confirmApply"),false,"Подтвердить — отправить на WB"); fit(); }
-});
-
-/* ============================================================
-   РЕЖИМ СОЗДАНИЯ
-============================================================ */
 async function loadSubjectsInto(sel,name){
   try{
     var j=await api("/api/wb/subjects?name="+encodeURIComponent(name||""));
@@ -494,6 +409,97 @@ async function loadSubjectsInto(sel,name){
   }catch(e){ sel.innerHTML='<option value="">ошибка загрузки</option>'; }
 }
 
+function selectedCards(){ return ALL_CARDS.filter(function(c){return selected.has(c.nmID);}); }
+
+var FIELD_LABELS={description:"SEO-описание",title:"Название",brand:"Бренд",vendorCode:"Артикул",subjectID:"Категория",characteristic:"Характеристика",price:"Цена, ₽"};
+function truncate(s){ s=String(s==null?"":s); return s.length>44?s.slice(0,44)+"…":s; }
+function findCharc(card,id){ var a=card.characteristics||[]; for(var i=0;i<a.length;i++){ if(a[i].id===id) return a[i]; } return null; }
+
+function buildEditPayload(){
+  var cards=selectedCards();
+  if(cards.length===0){ showStatus($("editStatus"),false,"Не выбрано ни одной карточки"); return null; }
+  var v=fieldSel.value;
+  if(!v){ showStatus($("editStatus"),false,"Выберите, что меняем"); return null; }
+  var isCharc=(v.indexOf("charc:")===0);
+  var f=isCharc?"characteristic":v;
+  var charcId=null,charcName=null,value,label;
+  if(isCharc){
+    charcId=parseInt(v.slice(6),10);
+    charcName=(CHARC_NAMES[charcId]||"").replace(/\s*\*$/,"");
+    value=$("valLine").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+    if(value.length===0){ showStatus($("editStatus"),false,"Введите значение характеристики"); return null; }
+    label="Характеристика: "+charcName;
+  } else if(f==="subjectID"){
+    value=$("subjSel").value;
+    if(!value){ showStatus($("editStatus"),false,"Выберите категорию"); return null; }
+    label="Категория";
+  } else if(f==="description"){
+    value=$("valText").value;
+    if(!value){ showStatus($("editStatus"),false,"Введите новое значение"); return null; }
+    label="SEO-описание";
+  } else {
+    value=$("valLine").value;
+    if(value===""||value==null){ showStatus($("editStatus"),false,"Введите новое значение"); return null; }
+    if(f==="price" && isNaN(parseFloat(value))){ showStatus($("editStatus"),false,"Цена должна быть числом"); return null; }
+    label=FIELD_LABELS[f]||f;
+  }
+  return { cards:cards, field:f, value:value, charcId:charcId, charcName:charcName, label:label };
+}
+
+function previewText(p){
+  var f=p.field, lines=[];
+  var newv=Array.isArray(p.value)?p.value.join(", "):p.value;
+  if(f==="subjectID"){ var opt=$("subjSel").selectedOptions[0]; newv=opt?opt.textContent:p.value; }
+  p.cards.slice(0,8).forEach(function(c){
+    var oldv;
+    if(f==="characteristic"){ var ch=findCharc(c,p.charcId); oldv=ch?(ch.value||[]).join(", "):"—"; }
+    else if(f==="subjectID"){ oldv=c.subjectName||"—"; }
+    else if(f==="price"){ oldv="текущая"; }
+    else { oldv=c[f]; }
+    lines.push(c.vendorCode+":  "+truncate(oldv||"—")+"  →  "+truncate(newv));
+  });
+  if(p.cards.length>8) lines.push("…и ещё "+(p.cards.length-8)+" карточек");
+  return lines.join("\n");
+}
+
+var pendingPayload=null;
+$("applyBtn").addEventListener("click",function(){
+  var p=buildEditPayload(); if(!p) return;
+  pendingPayload=p;
+  var warn=(p.field==="vendorCode"&&p.cards.length>1)
+    ? "  ⚠ Артикул уникален для каждой карточки — не задавайте одно значение нескольким!" : "";
+  $("confirmText").innerHTML="Будет изменено поле «"+esc(p.label)+"» у <b>"+p.cards.length+"</b> карточк(и) на Wildberries."+esc(warn);
+  $("confirmPreview").textContent=previewText(p);
+  $("confirmBox").style.display="block";
+  $("editStatus").className="status";
+  fit();
+});
+$("confirmCancel").addEventListener("click",function(){ $("confirmBox").style.display="none"; pendingPayload=null; fit(); });
+
+$("confirmApply").addEventListener("click",async function(){
+  if(!pendingPayload) return;
+  var p=pendingPayload;
+  spinOn($("confirmApply"),true,"Сохраняю на WB…");
+  try{
+    var j;
+    if(p.field==="price"){
+      var items=p.cards.map(function(c){return {nmID:c.nmID, price:parseFloat(p.value)};});
+      j=await api("/api/wb/set-prices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:items})});
+      if(j.ok){ showStatus($("editStatus"),true,"Цена отправлена на WB для "+items.length+" карточк(и). Обновление может занять несколько минут."); $("confirmBox").style.display="none"; pendingPayload=null; }
+      else showStatus($("editStatus"),false,j.error||"Ошибка изменения цены");
+    } else {
+      var body={ cards:p.cards.map(function(c){return c.raw;}), field:p.field, value:p.value, charcId:p.charcId, charcName:p.charcName };
+      j=await api("/api/wb/bulk-edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      if(j.ok){ showStatus($("editStatus"),true,"Обновлено карточек: "+j.updated+". Изменения отправлены на Wildberries."); $("confirmBox").style.display="none"; pendingPayload=null; }
+      else showStatus($("editStatus"),false,j.error||"Ошибка обновления");
+    }
+  }catch(e){ showStatus($("editStatus"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("confirmApply"),false,"Подтвердить — отправить на WB"); fit(); }
+});
+
+/* ============================================================
+   СОЗДАНИЕ
+============================================================ */
 $("subjSearchBtn").addEventListener("click",async function(){
   spinOn($("subjSearchBtn"),true,"…");
   await loadSubjectsInto($("createSubj"),$("subjSearch").value.trim());
@@ -505,7 +511,7 @@ $("createSubj").addEventListener("change",function(){
   $("charcsBox").innerHTML="";
 });
 
-var CHARCS=[]; // характеристики выбранной категории
+var CHARCS=[];
 $("loadCharcsBtn").addEventListener("click",async function(){
   var sid=$("createSubj").value; if(!sid){ alert("Сначала выберите категорию"); return; }
   spinOn($("loadCharcsBtn"),true,"…");
@@ -533,108 +539,115 @@ function collectCharcs(){
   return out;
 }
 
-function addRow(){
-  var tr=document.createElement("tr");
-  tr.innerHTML='<td><input type="text" class="c-vc" autocomplete="off"></td>'
-    +'<td><input type="text" class="c-title" autocomplete="off"></td>'
-    +'<td><textarea class="c-desc"></textarea></td>'
-    +'<td><input type="text" class="c-bar" autocomplete="off"></td>'
-    +'<td><button class="del-row" type="button">×</button></td>';
-  tr.querySelector(".del-row").addEventListener("click",function(){ tr.remove(); });
-  $("createBody").appendChild(tr);
-}
-$("addRowBtn").addEventListener("click",function(){ addRow(); fit(); });
-for(var i=0;i<3;i++) addRow();
 
-$("genBarcodesBtn").addEventListener("click",async function(){
-  var rows=$("createBody").querySelectorAll("tr");
-  var empties=[]; rows.forEach(function(r){ var b=r.querySelector(".c-bar"); if(!b.value.trim()) empties.push(b); });
-  if(empties.length===0){ alert("Все строки уже с баркодами"); return; }
-  spinOn($("genBarcodesBtn"),true,"…");
-  try{
-    var j=await api("/api/wb/barcodes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({count:empties.length})});
-    if(!j.ok||!j.barcodes){ alert("Ошибка: "+(j.error||"")); return; }
-    empties.forEach(function(b,i){ if(j.barcodes[i]) b.value=j.barcodes[i]; });
-  }catch(e){ alert("Ошибка генерации"); }
-  finally{ spinOn($("genBarcodesBtn"),false,"Сгенерировать баркоды"); }
-});
-
-/* ---- ГТИНы (Честный ЗНАК) ---- */
-async function checkNkStatus(){
-  var el=$("nkStatus"),btn=$("nkCreateBtn");
-  try{
-    var j=await api("/api/nk/status");
-    if(j.configured){
-      el.innerHTML="✓ Интеграция с Честным ЗНАКом настроена."; el.style.color="var(--ok)"; btn.disabled=false;
-    }else{
-      var miss=[]; if(!j.has_api_key) miss.push("NK_API_KEY"); if(!j.has_party_id) miss.push("NK_PARTY_ID");
-      el.innerHTML="⚠ Интеграция не настроена. Добавьте в переменные Railway: <b>"+miss.join(", ")+"</b>, затем перезагрузите страницу.";
-      el.style.color="var(--ink-2)"; btn.disabled=true;
-    }
-  }catch(e){ el.textContent="Не удалось проверить статус интеграции."; btn.disabled=true; }
-  fit();
-}
-$("nkCreateBtn").addEventListener("click",async function(){
-  var sid=parseInt($("createSubj").value,10);
-  var rows=Array.prototype.slice.call($("createBody").querySelectorAll("tr"));
-  var items=[],rowByVc={};
-  rows.forEach(function(r){
-    var vc=r.querySelector(".c-vc").value.trim();
-    if(!vc) return;
-    rowByVc[vc]=r;
-    items.push({ subjectID:sid, variants:[{ vendorCode:vc, title:r.querySelector(".c-title").value.trim(), brand:$("cBrand").value.trim() }] });
+/* Баркоды из ФАЙЛА Честного ЗНАка — группируем по артикулу (мультиразмерные карточки) */
+var FILE_GROUPS=null;
+function cleanTitle(n){ return String(n||"").replace(/,?\s*размер.*$/i,"").trim(); }
+function renderFilePreview(){
+  var arts=Object.keys(FILE_GROUPS);
+  if(arts.length===0){ $("filePreview").innerHTML=""; $("createFromFileBtn").style.display="none"; return; }
+  var html='<div class="tbl-wrap"><table><thead><tr><th>Артикул</th><th>Наименование</th><th>Цвет</th><th>Состав</th><th>ТНВЭД</th><th>Размеры → ГТИН</th></tr></thead><tbody>';
+  arts.forEach(function(a){
+    var g=FILE_GROUPS[a];
+    var sizes=g.sizes.map(function(s){return esc(s.size||"б/р")+" → "+(s.gtin?esc(s.gtin):"<span style=\"color:var(--err)\">нет ГТИН</span>");}).join("<br>");
+    html+='<tr><td class="pick-vc">'+esc(a)+'</td><td>'+esc(g.title)+'</td><td>'+esc(g.color||"")+'</td><td>'+esc(g.composition||"")+'</td><td style="font-family:var(--mono);font-size:12px">'+esc(g.tnved||"")+'</td><td style="font-family:var(--mono);font-size:12px">'+sizes+'</td></tr>';
   });
-  if(items.length===0){ showStatus($("nkResult"),false,"Заполните хотя бы артикулы в строках ниже"); return; }
-  spinOn($("nkCreateBtn"),true,"Создаю ГТИНы…");
+  html+='</tbody></table></div>';
+  $("filePreview").innerHTML=html;
+  $("createFromFileBtn").style.display="";
+}
+function applyNkRows(j){
+  FILE_GROUPS={};
+  (j.rows||[]).forEach(function(row){
+    var a=row.article; if(!a) return;
+    if(!FILE_GROUPS[a]) FILE_GROUPS[a]={title:cleanTitle(row.name), color:row.color||"", composition:row.composition||"", tnved:row.tnved||"", sizes:[]};
+    FILE_GROUPS[a].sizes.push({size:row.size, gtin:row.gtin});
+  });
+  renderFilePreview();
+  var msg="Артикулов: "+(j.articles||Object.keys(FILE_GROUPS).length)+", строк (размеров): "+j.count+", из них с ГТИН: "+j.with_gtin+".";
+  if(j.with_gtin===0) msg+=" ⚠ ГТИНы пустые — товары ещё не промодерированы в ЧЗ (нет присвоенных ГТИНов).";
+  else msg+=" Проверьте предпросмотр и создайте карточки на WB.";
+  showStatus($("nkFileResult"),j.with_gtin>0,msg);
+}
+
+/* Автоматически тянем товары из ЧЗ по API (без файла) */
+$("nkFetchBtn").addEventListener("click",async function(){
+  spinOn($("nkFetchBtn"),true,"Тяну из Честного ЗНАка…");
   try{
-    var j=await api("/api/nk/create-gtins",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:items})});
-    if(j.ok&&j.gtins){
-      var n=0;
-      Object.keys(j.gtins).forEach(function(vc){ if(rowByVc[vc]){ rowByVc[vc].querySelector(".c-bar").value=j.gtins[vc]; n++; } });
-      showStatus($("nkResult"),true,"Получено и проставлено ГТИНов: "+n+". Теперь создайте карточки на WB.");
-    }else{
-      showStatus($("nkResult"),false,(j.error||"Ошибка")+(j.needs_config?" — добавьте ключи НК в Railway":""));
+    var j=await api("/api/wb/nk-products");
+    if(!j.ok){
+      showStatus($("nkFileResult"),false,(j.error||"Ошибка")+(j.needs_config?" — добавьте ключ ЧЗ (NK_API_KEY и NK_PARTY_ID) в Railway":""));
+      return;
     }
-  }catch(e){ showStatus($("nkResult"),false,"Не удалось связаться с сервером"); }
-  finally{ spinOn($("nkCreateBtn"),false,"Создать ГТИНы в Честном ЗНАКе и подставить"); }
+    if((j.count||0)===0){ showStatus($("nkFileResult"),false,"В Честном ЗНАке не найдено товаров"); return; }
+    applyNkRows(j);
+  }catch(e){ showStatus($("nkFileResult"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("nkFetchBtn"),false,"⟳ Подтянуть товары из Честного ЗНАка"); fit(); }
 });
 
-$("createBtn").addEventListener("click",async function(){
+/* Запасной путь — загрузка файла вручную */
+$("nkFileBtn").addEventListener("click",async function(){
+  var f=$("nkFile").files[0];
+  if(!f){ showStatus($("nkFileResult"),false,"Выберите файл .xlsx"); return; }
+  var fd=new FormData(); fd.append("file",f);
+  spinOn($("nkFileBtn"),true,"Загружаю файл…");
+  try{
+    var r=await fetch("/api/wb/parse-nk-file",{method:"POST",body:fd});
+    var j=await r.json();
+    if(!j.ok){ showStatus($("nkFileResult"),false,j.error||"Ошибка разбора файла"); return; }
+    applyNkRows(j);
+  }catch(e){ showStatus($("nkFileResult"),false,"Не удалось загрузить файл"); }
+  finally{ spinOn($("nkFileBtn"),false,"Загрузить файл"); fit(); }
+});
+
+$("createFromFileBtn").addEventListener("click",async function(){
+  if(!FILE_GROUPS||Object.keys(FILE_GROUPS).length===0){ showStatus($("fileCreateStatus"),false,"Сначала загрузите файл"); return; }
   var sid=parseInt($("createSubj").value,10);
-  if(!sid){ showStatus($("createStatus"),false,"Выберите категорию"); return; }
+  if(!sid){ showStatus($("fileCreateStatus"),false,"Сначала выберите категорию WB (блок 1)"); return; }
   var brand=$("cBrand").value.trim();
   var dims={length:num("cLen"),width:num("cWid"),height:num("cHei"),weightBrutto:num("cWei")};
-  var price=num("cPrice"); var size=$("cSize").value.trim()||"0";
-  var charcs=collectCharcs();
-  var items=[];
-  var bad=false;
-  $("createBody").querySelectorAll("tr").forEach(function(r){
-    var vc=r.querySelector(".c-vc").value.trim();
-    var title=r.querySelector(".c-title").value.trim();
-    var desc=r.querySelector(".c-desc").value.trim();
-    var bar=r.querySelector(".c-bar").value.trim();
-    if(!vc&&!title) return;            // пустая строка — пропускаем
-    if(!vc||!title){ bad=true; return; }
-    items.push({ subjectID:sid, variants:[{
-      brand:brand, title:title, description:desc, vendorCode:vc,
-      dimensions:dims, characteristics:charcs,
-      sizes:[{ techSize:size, wbSize:size, price:price, skus: bar?[bar]:[] }]
-    }]});
+  var price=num("cPrice");
+  var manualCharcs=collectCharcs();
+  spinOn($("createFromFileBtn"),true,"Готовлю данные…");
+  // загружаем характеристики категории, чтобы авто-проставить Состав/Цвет/ТНВЭД из файла
+  var nameToId={};
+  try{
+    var jc=await api("/api/wb/charcs?subjectId="+sid);
+    if(jc&&jc.ok&&jc.charcs){ jc.charcs.forEach(function(ch){ if(ch.id!=null&&ch.name) nameToId[String(ch.name).toLowerCase().trim()]=ch.id; }); }
+  }catch(e){}
+  function findCharcId(subs){
+    var keys=Object.keys(nameToId);
+    for(var i=0;i<subs.length;i++){ for(var k=0;k<keys.length;k++){ if(keys[k].indexOf(subs[i])>=0) return nameToId[keys[k]]; } }
+    return null;
+  }
+  var compId=findCharcId(["состав"]);
+  var colorId=findCharcId(["цвет"]);
+  var tnvedId=findCharcId(["тнвэд","тн вэд","тн-вэд"]);
+  var items=Object.keys(FILE_GROUPS).map(function(a){
+    var g=FILE_GROUPS[a];
+    var ch=manualCharcs.slice();
+    function addCharc(id,val){ if(id&&val){ ch.push({id:id, value:[String(val)]}); } }
+    addCharc(compId, g.composition);
+    addCharc(colorId, g.color);
+    addCharc(tnvedId, g.tnved);
+    return { subjectID:sid, variants:[{
+      brand:brand, title:g.title||a, description:g.title||"", vendorCode:a,
+      dimensions:dims, characteristics:ch,
+      sizes: g.sizes.map(function(s){
+        var sz=String(s.size||"0");
+        return { techSize:sz, wbSize:sz, price:price, skus: s.gtin?[s.gtin]:[] };
+      })
+    }]};
   });
-  if(bad){ showStatus($("createStatus"),false,"В некоторых строках не заполнены Артикул или Название"); return; }
-  if(items.length===0){ showStatus($("createStatus"),false,"Добавьте хотя бы одну карточку"); return; }
-
-  spinOn($("createBtn"),true,"Создаю на WB…");
+  spinOn($("createFromFileBtn"),true,"Создаю на WB…");
   try{
     var j=await api("/api/wb/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:items})});
-    if(j.ok) showStatus($("createStatus"),true,"Отправлено на создание карточек: "+j.created+". Проверьте статус в кабинете WB через 1–2 минуты.");
-    else showStatus($("createStatus"),false,j.error||"Ошибка создания");
-  }catch(e){ showStatus($("createStatus"),false,"Не удалось связаться с сервером"); }
-  finally{ spinOn($("createBtn"),false,"Создать карточки на WB"); }
+    if(j.ok) showStatus($("fileCreateStatus"),true,"Отправлено на создание: "+j.created+" карточк(и). Проверьте статус в кабинете WB через 1–2 минуты.");
+    else showStatus($("fileCreateStatus"),false,j.error||"Ошибка создания");
+  }catch(e){ showStatus($("fileCreateStatus"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("createFromFileBtn"),false,"Создать карточки из файла на WB"); fit(); }
 });
 
-function num(id){ var v=parseFloat($(id).value); return isNaN(v)?0:v; }
-function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(ch){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[ch];}); }
 
 /* тема */
 (function(){
@@ -645,7 +658,6 @@ function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(ch){retu
 })();
 
 updateFieldUI();
-checkNkStatus();
 window.addEventListener("load",fit);
 </script>
 </body>

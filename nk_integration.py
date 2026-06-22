@@ -1,21 +1,24 @@
 """
-Интеграция с Национальным каталогом (Честный ЗНАК) — КАРКАС (Вариант Б).
+Интеграция с Национальным каталогом (Честный ЗНАК) — Вариант Б.
 
-Назначение сценария:
-    1. Массово создать карточки товаров в Национальном каталоге (НК).
-    2. Получить на них присвоенные ГТИНы.
-    3. Передать ГТИНы в режим «Создать массово» — они подставляются как
-       баркоды (sizes[].skus) при создании карточек на Wildberries.
+Подтверждённый по документации ЦРПТ процесс получения ГТИНов:
+    1. generate-gtins  → сгенерировать черновики кодов товаров (ГТИНы) и получить их.
+    2. создать карточку «Единица товара» с этим ГТИНом (is_tech_gtin = false).
+    3. ГТИНы подставляются как баркоды (sizes[].skus) при создании карточек на WB.
 
-⚠️  Это КАРКАС. HTTP-слой и структура готовы, но точные пути эндпоинтов и
-    формат полей товара НУЖНО СВЕРИТЬ с документацией в личном кабинете
-    «Честный ЗНАК»:  товарная группа → «Помощь» → «API» → «API Национального
-    каталога».  Все места, требующие сверки, помечены  TODO[NK-DOCS].
+⚠️  ПУТИ ЭНДПОИНТОВ И ФОРМАТ ТЕЛ ЗАПРОСОВ нужно сверить с документацией в личном
+    кабинете «Честный ЗНАК»: товарная группа → «Помощь» → «API» → «API
+    Национального каталога» (docs.crpt.ru/gismt/API_НК — доступна из ЛК).
+    Подтверждены НАЗВАНИЯ методов и флаг is_tech_gtin; точные URL/схемы тел —
+    помечены TODO[NK-DOCS]. Честный ЗНАК — государственная система, поэтому до
+    боевого запуска формат запросов обязательно сверить с офиц. документацией.
 
 Переменные окружения:
-    NK_API_KEY   — apikey Национального каталога (постоянный ключ из ЛК)
-    NK_PARTY_ID  — идентификатор владельца товара (party_id / suppliers_id)
-    NK_BASE_URL  — базовый URL API НК (по умолчанию ниже; сверьте с документацией)
+    NK_API_KEY   — apikey Национального каталога (ЛК → «Ключи API» → «Создать ключ»)
+    NK_PARTY_ID  — идентификатор владельца товара (party_id)
+    NK_TOKEN     — bearer-токен ГИС МТ (если в вашем контуре авторизация по токену,
+                   а не по apikey; живёт ~10 часов, опционально)
+    NK_BASE_URL  — базовый URL API НК (сверьте с документацией)
 """
 
 import os
@@ -26,19 +29,22 @@ import httpx
 
 NK_API_KEY = os.environ.get("NK_API_KEY", "").strip()
 NK_PARTY_ID = os.environ.get("NK_PARTY_ID", "").strip()
+NK_TOKEN = os.environ.get("NK_TOKEN", "").strip()  # опционально: bearer ГИС МТ
 # TODO[NK-DOCS]: подставьте базовый URL из документации НК (ЛК «Честный ЗНАК»).
-NK_BASE_URL = os.environ.get("NK_BASE_URL", "https://api.national-catalog.ru").strip().rstrip("/")
+NK_BASE_URL = os.environ.get("NK_BASE_URL", "https://апи.национальный-каталог.рф").strip().rstrip("/")
 
-# TODO[NK-DOCS]: сверьте пути эндпоинтов с документацией «API Национального каталога».
+# Названия методов generate-gtins / product-create подтверждены документацией ЦРПТ.
+# TODO[NK-DOCS]: сверьте полные пути (префикс версии /v3 или /v4) с документацией ЛК.
 NK_PATHS = {
-    "feed_info": "/v3/feed-info",        # информация об аккаунте/правах
-    "categories": "/v3/categories",      # дерево категорий НК
-    "attributes": "/v3/attributes",      # атрибуты категории
-    "product_create": "/v3/product-create",  # создание товара (черновика)
-    "product_list": "/v3/product-list",  # список товаров (с присвоенными ГТИН)
+    "feed_info": "/v4/feed-info",            # информация об аккаунте/правах
+    "categories": "/v3/categories",          # дерево категорий НК
+    "attributes": "/v3/attributes",          # атрибуты категории
+    "generate_gtins": "/v3/generate-gtins",  # генерация черновиков ГТИН
+    "product_create": "/v3/product-create",  # создание карточки «Единица товара»
+    "product_list": "/v4/product-list",      # список товаров (статусы/ГТИНы) — подтверждён v4
 }
 
-# Сколько раз и с каким интервалом опрашивать НК в ожидании присвоения ГТИН.
+# Ожидание присвоения/активации ГТИН (если нужно опрашивать список товаров).
 GTIN_POLL_ATTEMPTS = 10
 GTIN_POLL_INTERVAL = 3  # секунд
 
@@ -56,14 +62,16 @@ class NKNotConfigured(NKError):
 # ===================== СОСТОЯНИЕ / ДИАГНОСТИКА =====================
 
 def nk_configured():
-    return bool(NK_API_KEY and NK_PARTY_ID)
+    # party_id необязателен — для запроса своих товаров обычно хватает apikey
+    return bool(NK_API_KEY or NK_TOKEN)
 
 
 def nk_status():
-    """Безопасная диагностика (без раскрытия самих ключей) — для интерфейса."""
+    """Безопасная диагностика (без раскрытия ключей) — для интерфейса."""
     return {
         "configured": nk_configured(),
         "has_api_key": bool(NK_API_KEY),
+        "has_token": bool(NK_TOKEN),
         "has_party_id": bool(NK_PARTY_ID),
         "base_url": NK_BASE_URL,
     }
@@ -72,14 +80,22 @@ def nk_status():
 # ===================== HTTP-СЛОЙ =====================
 
 def nk_request(method, path, params=None, json_body=None, timeout=60):
-    """Базовый вызов API НК. apikey передаётся query-параметром."""
+    """
+    Базовый вызов API НК.
+    apikey передаётся query-параметром; если задан NK_TOKEN — добавляется
+    заголовок Authorization: Bearer (для контуров с токен-авторизацией ГИС МТ).
+    """
     if not nk_configured():
-        raise NKNotConfigured("Не заданы NK_API_KEY и/или NK_PARTY_ID")
+        raise NKNotConfigured("Не заданы NK_API_KEY (или NK_TOKEN) и/или NK_PARTY_ID")
     p = dict(params or {})
-    p.setdefault("apikey", NK_API_KEY)
+    if NK_API_KEY:
+        p.setdefault("apikey", NK_API_KEY)
+    headers = {}
+    if NK_TOKEN:
+        headers["Authorization"] = f"Bearer {NK_TOKEN}"
     url = NK_BASE_URL + path
     try:
-        r = httpx.request(method, url, params=p, json=json_body, timeout=timeout)
+        r = httpx.request(method, url, params=p, json=json_body, headers=headers, timeout=timeout)
     except Exception as e:
         raise NKError(f"Сеть/НК недоступен: {e}")
     if r.status_code >= 400:
@@ -97,12 +113,10 @@ def nk_request(method, path, params=None, json_body=None, timeout=60):
 # ===================== СПРАВОЧНИКИ НК =====================
 
 def nk_feed_info():
-    # TODO[NK-DOCS]: проверить путь/формат ответа.
     return nk_request("GET", NK_PATHS["feed_info"])
 
 
 def nk_get_categories():
-    # TODO[NK-DOCS]: проверить путь/формат ответа.
     return nk_request("GET", NK_PATHS["categories"])
 
 
@@ -111,119 +125,184 @@ def nk_get_attributes(category_id):
     return nk_request("GET", NK_PATHS["attributes"], params={"cat_id": category_id})
 
 
-# ===================== СОЗДАНИЕ ТОВАРОВ И ПОЛУЧЕНИЕ ГТИН =====================
+# ===================== ШАГ 1: ГЕНЕРАЦИЯ ГТИН =====================
 
-def build_nk_product(item):
+def nk_generate_gtins(count):
     """
-    Преобразует элемент создания карточки WB в товар формата Национального каталога.
+    Генерирует `count` черновиков ГТИН и возвращает список кодов (строк).
 
-    На вход — элемент из режима «Создать массово» (тот же формат, что уходит в WB):
-        { "subjectID": <int>, "variants": [ { vendorCode, title, description,
-                                              brand, dimensions, characteristics,
-                                              sizes:[{techSize, price, skus}] } ] }
+    TODO[NK-DOCS]: сверьте тело запроса и формат ответа. По документации метод
+    generate-gtins возвращает сгенерированные коды товаров; типовые варианты
+    обёртки ответа учтены в разборе ниже.
+    """
+    body = {"party_id": NK_PARTY_ID, "count": int(count)}
+    resp = nk_request("POST", NK_PATHS["generate_gtins"], json_body=body)
+    return _extract_gtins(resp)
 
-    TODO[NK-DOCS]: НК требует свой набор полей (категория НК, ТНВЭД, бренд,
-    обязательные атрибуты товарной группы и т.д.). Здесь — минимальный каркас;
-    дополните маппинг по документации «API Национального каталога».
+
+def _extract_gtins(resp):
+    """Достаёт список ГТИН из ответа generate-gtins (учёт разных обёрток)."""
+    if isinstance(resp, list):
+        items = resp
+    elif isinstance(resp, dict):
+        items = (resp.get("gtins") or resp.get("result") or resp.get("data")
+                 or resp.get("codes") or [])
+    else:
+        items = []
+    out = []
+    for it in items:
+        if isinstance(it, str):
+            out.append(it)
+        elif isinstance(it, dict):
+            g = it.get("gtin") or it.get("code") or it.get("good_id")
+            if g:
+                out.append(str(g))
+    return out
+
+
+# ===================== ШАГ 2: СОЗДАНИЕ КАРТОЧКИ «ЕДИНИЦА ТОВАРА» =====================
+
+def build_nk_unit(gtin, item):
+    """
+    Тело карточки «Единица товара» для product-create.
+    gtin — ранее сгенерированный код; is_tech_gtin = false (подтверждено докой).
+
+    TODO[NK-DOCS]: дополните обязательными атрибутами товарной группы (категория
+    НК, бренд, ТНВЭД, good_attrs и т.д.) — список берётся из nk_get_attributes().
     """
     v = (item.get("variants") or [{}])[0]
     return {
         "party_id": NK_PARTY_ID,
-        "vendor_code": v.get("vendorCode"),
+        "gtin": gtin,
+        "is_tech_gtin": False,
         "good_name": v.get("title"),
+        "vendor_code": v.get("vendorCode"),
         "brand": v.get("brand"),
-        # TODO[NK-DOCS]: "category": <категория НК>, "tnved": <код ТНВЭД>,
+        # TODO[NK-DOCS]: "category": <категория НК>, "tnved": <ТНВЭД>,
         # TODO[NK-DOCS]: "good_attrs": [ {attr_id, value}, ... ] — обязательные атрибуты.
     }
 
 
-def nk_create_products(products):
+def nk_create_unit(gtin, item):
+    body = build_nk_unit(gtin, item)
+    return nk_request("POST", NK_PATHS["product_create"], json_body=body)
+
+
+# ===================== АВТОЗАГРУЗКА ТОВАРОВ ИЗ НК (без файла) =====================
+# ID атрибутов НК взяты из строки кодов шаблона импорта (см. реальный файл ЧЗ).
+NK_ATTRS = {"article": 13914, "size": 35, "color": 36, "composition": 2483, "tnved": 13933}
+
+def _extract_goods(data):
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        r = data.get("result")
+        if isinstance(r, dict):
+            return r.get("goods") or r.get("data") or r.get("products") or []
+        if isinstance(r, list):
+            return r
+        return data.get("goods") or data.get("data") or data.get("products") or []
+    return []
+
+def _good_attrs_map(g):
+    out = {}
+    attrs = g.get("good_attrs") or g.get("attrs") or g.get("attributes") or []
+    for a in attrs:
+        if not isinstance(a, dict):
+            continue
+        aid = a.get("attr_id") or a.get("id")
+        val = a.get("values") if "values" in a else a.get("value")
+        if isinstance(val, list):
+            parts = []
+            for v in val:
+                parts.append(str(v.get("value")) if isinstance(v, dict) else str(v))
+            val = ", ".join(p for p in parts if p)
+        if aid is not None:
+            out[aid] = (str(val).strip() if val is not None else "")
+    return out
+
+def _good_gtin(g):
+    gt = g.get("gtin") or g.get("gtins")
+    if isinstance(gt, list):
+        if gt and isinstance(gt[0], dict):
+            return str(gt[0].get("gtin") or "")
+        if gt:
+            return str(gt[0])
+        return ""
+    return str(gt) if gt else ""
+
+def nk_fetch_products(limit=1000):
     """
-    Создаёт товары (черновики) в Национальном каталоге.
-    products — список объектов build_nk_product().
+    Тянет товары продавца из Национального каталога и нормализует строки
+    в тот же формат, что даёт парсер файла:
+        [{article, size, gtin, name, color, composition, tnved}, ...]
 
-    TODO[NK-DOCS]: уточнить обёртку payload (часто это {"apikey":..,"goods":[...]}
-    либо отдельный метод на каждый товар) и формат ответа (good_id и т.п.).
+    TODO[NK-DOCS]: сверьте путь product-list, имя параметра поставщика и
+    структуру ответа (goods / good_attrs / gtins) с документацией в ЛК ЧЗ.
     """
-    payload = {"party_id": NK_PARTY_ID, "goods": products}
-    return nk_request("POST", NK_PATHS["product_create"], json_body=payload)
-
-
-def nk_list_products(params=None):
-    """Список товаров продавца — отсюда забираем присвоенные ГТИНы."""
-    base = {"party_id": NK_PARTY_ID}
-    base.update(params or {})
-    return nk_request("GET", NK_PATHS["product_list"], params=base)
-
-
-def _extract_gtin_map(products_response):
-    """
-    Достаёт соответствие vendor_code -> gtin из ответа НК.
-
-    TODO[NK-DOCS]: подставить реальные имена полей. Ниже — типовые варианты,
-    которые встречаются в выгрузках НК; оставлены как ориентир.
-    """
-    result = {}
-    items = []
-    if isinstance(products_response, dict):
-        items = (products_response.get("result")
-                 or products_response.get("goods")
-                 or products_response.get("data")
-                 or [])
-    elif isinstance(products_response, list):
-        items = products_response
-    for g in items:
+    if not nk_configured():
+        raise NKNotConfigured("Интеграция с НК не настроена: задайте NK_API_KEY и NK_PARTY_ID.")
+    params = {"limit": limit}
+    if NK_PARTY_ID:
+        params["suppliers[]"] = NK_PARTY_ID
+    data = nk_request("GET", NK_PATHS["product_list"], params=params)
+    rows = []
+    for g in _extract_goods(data):
         if not isinstance(g, dict):
             continue
-        vc = g.get("vendor_code") or g.get("vendorCode") or g.get("good_id")
-        gtin = g.get("gtin") or g.get("gtins") or g.get("good_gtin")
-        if isinstance(gtin, list):
-            gtin = gtin[0] if gtin else None
-        if vc and gtin:
-            result[str(vc)] = str(gtin)
-    return result
+        attrs = _good_attrs_map(g)
+        rows.append({
+            "article": attrs.get(NK_ATTRS["article"], ""),
+            "size": attrs.get(NK_ATTRS["size"], ""),
+            "color": attrs.get(NK_ATTRS["color"], ""),
+            "composition": attrs.get(NK_ATTRS["composition"], ""),
+            "tnved": attrs.get(NK_ATTRS["tnved"], ""),
+            "name": g.get("good_name") or g.get("name") or "",
+            "gtin": _good_gtin(g),
+        })
+    return rows
 
 
-def create_gtins_for_items(items, wait_for_gtin=True):
+# ===================== ГЛАВНЫЙ СЦЕНАРИЙ =====================
+
+def create_gtins_for_items(items, create_cards=True):
     """
-    ГЛАВНЫЙ СЦЕНАРИЙ Варианта Б (КАРКАС).
+    Возвращает карту  { "<vendorCode>": "<gtin>", ... }.
 
-    1. Преобразовать карточки в товары формата НК.
-    2. Создать их в Национальном каталоге.
-    3. Дождаться присвоения ГТИНов (опрос nk_list_products).
-    4. Вернуть карту vendorCode -> gtin для подстановки в карточки WB.
-
-    Возвращает: { "<vendorCode>": "<gtin>", ... }
+    1. Генерирует столько ГТИН, сколько товаров.
+    2. (если create_cards) создаёт по каждому карточку «Единица товара» в НК.
+    3. Возвращает соответствие артикул → ГТИН для подстановки в карточки WB.
     """
     if not nk_configured():
         raise NKNotConfigured("Интеграция с НК не настроена: задайте NK_API_KEY и NK_PARTY_ID.")
 
-    products = [build_nk_product(it) for it in items]
-    create_resp = nk_create_products(products)
+    vendor_codes = [str((it.get("variants") or [{}])[0].get("vendorCode") or "").strip()
+                    for it in items]
+    if any(not vc for vc in vendor_codes):
+        raise NKError("У всех товаров должен быть заполнен артикул (vendorCode).")
 
-    # Часть ГТИНов может вернуться сразу в ответе на создание.
-    gtin_map = _extract_gtin_map(create_resp)
-
-    # Остальные — дожидаемся через опрос списка товаров.
-    if wait_for_gtin:
-        want = {str((it.get("variants") or [{}])[0].get("vendorCode"))
-                for it in items if (it.get("variants") or [{}])[0].get("vendorCode")}
-        for _ in range(GTIN_POLL_ATTEMPTS):
-            if want.issubset(set(gtin_map.keys())):
-                break
-            time.sleep(GTIN_POLL_INTERVAL)
-            try:
-                listed = nk_list_products()
-                gtin_map.update(_extract_gtin_map(listed))
-            except NKError:
-                pass
-
-    if not gtin_map:
-        # Каркас намеренно не молчит: пока маппинг ответа НК не сверен с
-        # документацией, честно сообщаем, что шаг требует настройки.
+    gtins = nk_generate_gtins(len(items))
+    if len(gtins) < len(items):
         raise NKError(
-            "Товары отправлены в НК, но ГТИНы не распознаны. "
-            "Сверьте формат ответа с документацией «API Национального каталога» "
-            "и дополните _extract_gtin_map / build_nk_product (TODO[NK-DOCS])."
+            f"НК вернул {len(gtins)} ГТИН на {len(items)} товаров. "
+            "Сверьте ответ generate-gtins с документацией (TODO[NK-DOCS])."
+        )
+
+    gtin_map = {}
+    errors = []
+    for item, vc, gtin in zip(items, vendor_codes, gtins):
+        gtin_map[vc] = gtin
+        if create_cards:
+            try:
+                nk_create_unit(gtin, item)
+            except NKError as e:
+                errors.append(f"{vc}: {e}")
+
+    if errors and len(errors) == len(items):
+        # Все карточки не создались — значит формат тела не сверён с докой.
+        raise NKError(
+            "ГТИНы сгенерированы, но ни одна карточка «Единица товара» не создана. "
+            "Сверьте build_nk_unit / product-create с документацией НК (TODO[NK-DOCS]). "
+            "Первая ошибка: " + errors[0]
         )
     return gtin_map
