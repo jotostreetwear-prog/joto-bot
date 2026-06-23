@@ -3002,6 +3002,19 @@ def admin_register():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
+@app.route("/api/bitrix/placements", methods=["GET"])
+def api_bitrix_placements():
+    """Диагностика: список плейсментов, видимых НАШЕМУ приложению Битрикса.
+    Если «Чек-лист» тут есть — значит он под нашим приложением и убираемый;
+    если нет — он от другого приложения, убирать надо в нём."""
+    try:
+        pls = bx_call("placement.get") or []
+        out = [{"placement": p.get("placement"), "handler": p.get("handler"), "title": p.get("title")}
+               for p in pls if isinstance(p, dict)]
+        return jsonify({"ok": True, "count": len(out), "placements": out})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
 @app.route("/admin/bitrix/placement", methods=["GET"])
 def admin_placement():
     if not BITRIX_CLIENT_SECRET or request.args.get("secret", "") != BITRIX_CLIENT_SECRET:
