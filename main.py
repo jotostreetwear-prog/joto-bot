@@ -569,9 +569,14 @@ def _bind_left_menu_item(handler_url, title, description):
     return result
 
 def register_left_menu():
-    """Добавляет приложение пунктами в левое меню Bitrix24: карточки WB и распродажа."""
-    _bind_left_menu_item(LEFT_MENU_HANDLER_URL, LEFT_MENU_TITLE,
-                         "Массовое создание и редактирование карточек Wildberries")
+    """Левое меню: только «Распродажа сезона».
+    «Карточки WB» убрана — весь раздел (артикулы, карточки, чек-лист) доступен
+    через приложение «Генерация артикулов»."""
+    try:
+        bx_call("placement.unbind", {"PLACEMENT": "LEFT_MENU", "HANDLER": LEFT_MENU_HANDLER_URL})
+        print(f"Пункт «Карточки WB» убран из меню: {LEFT_MENU_HANDLER_URL}")
+    except Exception as e:
+        print(f"unbind Карточки WB: {e}")
     _bind_left_menu_item(SEASON_MENU_HANDLER_URL, SEASON_MENU_TITLE,
                          "Отчёт по распродаже сезонных товаров (остатки, динамика, скидки)")
     return True
@@ -3028,9 +3033,13 @@ def ensure_left_menu_on_start():
     if not load_oauth():
         print("[МЕНЮ] OAuth ещё не настроен — пункт левого меню привяжется при установке")
         return
+    # «Карточки WB» убираем из меню (дублирует приложение «Генерация артикулов»)
+    try:
+        bx_call("placement.unbind", {"PLACEMENT": "LEFT_MENU", "HANDLER": LEFT_MENU_HANDLER_URL})
+        print(f"[МЕНЮ] убран пункт «Карточки WB»: {LEFT_MENU_HANDLER_URL}")
+    except Exception:
+        pass
     items = [
-        (LEFT_MENU_HANDLER_URL, LEFT_MENU_TITLE,
-         "Массовое создание и редактирование карточек Wildberries"),
         (SEASON_MENU_HANDLER_URL, SEASON_MENU_TITLE,
          "Отчёт по распродаже сезонных товаров (остатки, динамика, скидки)"),
     ]
