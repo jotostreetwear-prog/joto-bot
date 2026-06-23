@@ -968,6 +968,39 @@ def api_config():
 def api_categories():
     return jsonify({"ok": True, "categories": all_categories()})
 
+@app.route("/api/db-check", methods=["GET"])
+def api_db_check():
+    """Диагностика БД: задан ли DATABASE_URL, подключается ли, какие таблицы есть.
+    Креды не раскрываются — только хост."""
+    out = {"database_url_set": bool(DATABASE_URL)}
+    try:
+        m = re.search(r"@([^/:]+)", DATABASE_URL or "")
+        out["host"] = m.group(1) if m else "(не распознан)"
+    except Exception:
+        out["host"] = "(ошибка разбора)"
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
+        out["connect"] = True
+        out["tables"] = [r[0] for r in cur.fetchall()]
+        # пробный init, чтобы создать таблицы если их нет
+        cur.close()
+        conn.close()
+    except Exception as e:
+        out["connect"] = False
+        out["error"] = str(e)[:300]
+    return jsonify(out)
+
+@app.route("/api/db-init", methods=["GET"])
+def api_db_init():
+    """Принудительно создаёт таблицы (CREATE TABLE IF NOT EXISTS). Безопасно."""
+    try:
+        init_db()
+        return jsonify({"ok": True, "message": "init_db выполнен"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:300]}), 500
+
 @app.route("/api/category", methods=["POST"])
 def api_add_category():
     data = request.get_json(silent=True) or request.form
