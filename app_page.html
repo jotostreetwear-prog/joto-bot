@@ -70,12 +70,13 @@ input.invalid{ border-color:#e0483a; box-shadow:0 0 0 4px rgba(224,72,58,.16); }
 .hint .num{ font-family:var(--mono); font-weight:600; color:var(--ink); background:var(--surface-2);
   border:1px solid var(--line); padding:1px 8px; border-radius:6px; font-size:12.5px; }
 .hint .num.pulse{ animation:pop .32s var(--ease); }
-.cat-del{ margin-top:2px; align-self:flex-start; display:inline-flex; align-items:center; gap:7px;
-  background:transparent; border:none; padding:4px 0; cursor:pointer; font-family:var(--sans); font-size:12.5px;
-  font-weight:600; color:var(--ink-3); transition:color .16s var(--ease); }
+.cat-del{ margin-top:10px; align-self:flex-start; display:inline-flex; align-items:center; gap:8px;
+  background:transparent; border:1.5px solid #e0483a; padding:10px 16px; border-radius:var(--r); cursor:pointer;
+  font-family:var(--sans); font-size:13px; font-weight:700; color:#e0483a;
+  transition:background .16s var(--ease), color .16s var(--ease); }
 .cat-del[hidden]{ display:none; }
-.cat-del:hover{ color:#e0483a; }
-.cat-del svg{ width:14px; height:14px; }
+.cat-del:hover{ background:#e0483a; color:#fff; }
+.cat-del svg{ width:15px; height:15px; }
 .cat-del[disabled]{ opacity:.5; cursor:default; }
 @keyframes pop{ 0%{transform:scale(.86);opacity:.3} 100%{transform:scale(1);opacity:1} }
 .form-error{ margin:0; font-size:13.5px; color:#e0483a; font-weight:500; display:flex;
