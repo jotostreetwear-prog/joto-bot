@@ -176,14 +176,39 @@ def all_categories():
     for value, title in CATEGORY_TITLES.items():
         code = CATEGORIES.get(value)
         if code and code not in seen_codes:
-            items.append({"value": value, "title": title, "code": code})
+            items.append({"value": value, "title": title, "code": code, "custom": False})
             seen_codes.add(code)
     for name, code in db_list_categories():
         if code not in seen_codes:
-            items.append({"value": name, "title": name.capitalize(), "code": code})
+            items.append({"value": name, "title": name.capitalize(), "code": code, "custom": True})
             seen_codes.add(code)
     items.sort(key=lambda x: x["code"])
     return items
+
+def db_delete_category(name=None, code=None):
+    """Удаляет добавленную (кастомную) категорию из БД по названию или коду.
+    Встроенные категории (01–11) не трогаются — их в таблице нет."""
+    name = (name or "").strip().lower()
+    code = (str(code).strip() if code else "")
+    if not name and not code:
+        return False, "Укажите категорию"
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        if code:
+            cur.execute("DELETE FROM categories WHERE code=%s", (code,))
+        else:
+            cur.execute("DELETE FROM categories WHERE lower(name)=%s", (name,))
+        deleted = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        if deleted:
+            return True, "Удалено"
+        return False, "Категория не найдена (возможно, встроенная — её удалить нельзя)"
+    except Exception as e:
+        print(f"Ошибка db_delete_category: {e}")
+        return False, "Ошибка удаления"
 
 def used_category_codes():
     codes = set(CATEGORIES.values())
@@ -953,6 +978,16 @@ def api_add_category():
     if not ok:
         return jsonify({"ok": False, "error": result}), 400
     return jsonify({"ok": True, "value": name, "title": name.capitalize(), "code": result})
+
+@app.route("/api/category/delete", methods=["POST"])
+def api_delete_category():
+    data = request.get_json(silent=True) or request.form
+    name = (data.get("name", "") or "").strip().lower()
+    code = (data.get("code", "") or "").strip()
+    ok, result = db_delete_category(name=name or None, code=code or None)
+    if not ok:
+        return jsonify({"ok": False, "error": result}), 400
+    return jsonify({"ok": True})
 
 @app.route("/api/next", methods=["GET"])
 def api_next():
