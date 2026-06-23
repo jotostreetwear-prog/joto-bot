@@ -115,8 +115,8 @@ td textarea{min-height:40px}
     <div class="brand">
       <span class="wordmark">joto</span>
       <div>
-        <h1 class="screen-title">Маркетплейс JOTO</h1>
-        <div class="muted">Артикулы и карточки Wildberries</div>
+        <h1 class="screen-title">Карточки WB</h1>
+        <div class="muted">Артикулы, карточки и чек-лист Wildberries</div>
       </div>
     </div>
     <div class="head-right">
@@ -129,6 +129,7 @@ td textarea{min-height:40px}
     <button class="tab" data-mode="article" type="button">🅙 Генерация артикулов</button>
     <button class="tab" data-mode="edit" type="button">✎ Редактирование карточек</button>
     <button class="tab" data-mode="create" type="button">＋ Создание карточек</button>
+    <button class="tab" data-mode="checklist" type="button">✓ Чек-лист</button>
   </div>
 
   <!-- ============ ОБЗОР ============ -->
@@ -150,6 +151,12 @@ td textarea{min-height:40px}
         <div class="hc-ico">＋</div>
         <div class="hc-title">Создание карточек</div>
         <div class="hc-sub">Создать карточки на Wildberries из файла Честного ЗНАка.</div>
+        <div class="hc-go">Открыть →</div>
+      </button>
+      <button class="home-card" data-go="checklist" type="button">
+        <div class="hc-ico">✓</div>
+        <div class="hc-title">Чек-лист</div>
+        <div class="hc-sub">Готовность карточек: фото, описание, характеристики, баркод и др.</div>
         <div class="hc-go">Открыть →</div>
       </button>
     </div>
@@ -326,6 +333,14 @@ td textarea{min-height:40px}
     </div>
 
   </section>
+
+  <!-- ============ ЧЕК-ЛИСТ (встроенное приложение) ============ -->
+  <section class="panel" id="panel-checklist" hidden>
+    <div class="block" style="padding:0;overflow:hidden">
+      <iframe id="checklistFrame" title="Чек-лист карточек"
+        style="width:100%;height:82vh;min-height:560px;border:0;display:block;border-radius:calc(var(--r) + 4px)"></iframe>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -356,12 +371,15 @@ document.querySelectorAll(".tab").forEach(function(t){
     setMode(t.dataset.mode);
   });
 });
+var CHECKLIST_URL="https://joto-ctr-monitor-production.up.railway.app/checklist";
 function setMode(m){
   document.querySelectorAll(".tab").forEach(function(x){ x.classList.toggle("active", x.dataset.mode===m); });
   $("panel-home").hidden=(m!=="home");
   $("panel-article").hidden=(m!=="article");
   $("panel-edit").hidden=(m!=="edit");
   $("panel-create").hidden=(m!=="create");
+  $("panel-checklist").hidden=(m!=="checklist");
+  if(m==="checklist"){ var f=$("checklistFrame"); if(f && !f.src) f.src=CHECKLIST_URL; }
   fit();
 }
 /* плитки на «Обзоре» открывают нужную вкладку */
