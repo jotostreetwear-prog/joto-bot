@@ -3101,12 +3101,6 @@ def ensure_left_menu_on_start():
         return
     # убрать дубли наших пунктов на старых доменах и «Чек-лист»
     cleanup_left_menu()
-    items = [
-        (LEFT_MENU_HANDLER_URL, LEFT_MENU_TITLE,
-         "Артикулы, карточки и чек-лист Wildberries"),
-        (SEASON_MENU_HANDLER_URL, SEASON_MENU_TITLE,
-         "Отчёт по распродаже сезонных товаров (остатки, динамика, скидки)"),
-    ]
     try:
         existing = set()
         try:
@@ -3115,20 +3109,40 @@ def ensure_left_menu_on_start():
                     existing.add(pl["handler"].rstrip("/"))
         except Exception as e:
             print(f"[МЕНЮ] placement.get недоступен: {e}")
-        for handler, title, desc in items:
-            if not handler:
-                continue
-            if handler.rstrip("/") in existing:
-                print(f"[МЕНЮ] уже привязан, позиция сохранена: {handler}")
-                continue
+
+        # «Карточки WB» — привязываем только если ОТСУТСТВУЕТ (сохраняем позицию,
+        # заданную перетаскиванием).
+        if LEFT_MENU_HANDLER_URL:
+            if LEFT_MENU_HANDLER_URL.rstrip("/") in existing:
+                print(f"[МЕНЮ] уже привязан, позиция сохранена: {LEFT_MENU_HANDLER_URL}")
+            else:
+                try:
+                    bx_call("placement.bind", {
+                        "PLACEMENT": "LEFT_MENU", "HANDLER": LEFT_MENU_HANDLER_URL,
+                        "TITLE": LEFT_MENU_TITLE,
+                        "DESCRIPTION": "Артикулы, карточки и чек-лист Wildberries",
+                    })
+                    print(f"[МЕНЮ] добавлен пункт: {LEFT_MENU_HANDLER_URL} ({LEFT_MENU_TITLE})")
+                except Exception as e:
+                    print(f"[МЕНЮ] не удалось привязать {LEFT_MENU_HANDLER_URL}: {e}")
+
+        # «Распродажа сезона» — ПРИНУДИТЕЛЬНО пере-привязываем при каждом старте,
+        # чтобы пункт гарантированно вернулся, даже если когда-то отвалился.
+        if SEASON_MENU_HANDLER_URL:
+            try:
+                bx_call("placement.unbind", {
+                    "PLACEMENT": "LEFT_MENU", "HANDLER": SEASON_MENU_HANDLER_URL})
+            except Exception:
+                pass
             try:
                 bx_call("placement.bind", {
-                    "PLACEMENT": "LEFT_MENU", "HANDLER": handler,
-                    "TITLE": title, "DESCRIPTION": desc,
+                    "PLACEMENT": "LEFT_MENU", "HANDLER": SEASON_MENU_HANDLER_URL,
+                    "TITLE": SEASON_MENU_TITLE,
+                    "DESCRIPTION": "Отчёт по распродаже сезонных товаров (остатки, динамика, скидки)",
                 })
-                print(f"[МЕНЮ] добавлен пункт: {handler} ({title})")
+                print(f"[МЕНЮ] восстановлен пункт: {SEASON_MENU_HANDLER_URL} ({SEASON_MENU_TITLE})")
             except Exception as e:
-                print(f"[МЕНЮ] не удалось привязать {handler}: {e}")
+                print(f"[МЕНЮ] не удалось привязать {SEASON_MENU_HANDLER_URL}: {e}")
     except Exception as e:
         print(f"[МЕНЮ] Не удалось проверить пункты левого меню при старте: {e}")
 
