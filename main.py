@@ -616,6 +616,18 @@ def cleanup_left_menu():
         print(f"[МЕНЮ] cleanup placement.get: {e}")
     return removed
 
+def public_base_from_request(req):
+    """Строит публичный адрес приложения из запроса, ВСЕГДА по https.
+    Railway терминирует TLS на прокси и передаёт во Flask запрос как http,
+    поэтому request.host_url даёт http:// — а Битрикс открывает приложение в
+    iframe по https и http-пункт меню блокирует («Приложение не найдено»).
+    Берём реальный домен (X-Forwarded-Host при наличии) и насаживаем https."""
+    host = req.headers.get("X-Forwarded-Host") or req.host
+    proto = req.headers.get("X-Forwarded-Proto", "https").split(",")[0].strip() or "https"
+    if proto != "https":
+        proto = "https"  # для публичного домена Railway всегда https
+    return f"{proto}://{host}".rstrip("/")
+
 def register_left_menu(base_url=None):
     """Левое меню: наши пункты «Карточки WB» (объединённый раздел) и
     «Распродажа сезона». Дубли на старых доменах и «Чек-лист» — убираются.
@@ -920,7 +932,7 @@ def install():
             print(f"Ошибка регистрации бота при установке: {e}")
         try:
             # адрес берём из запроса установки — это и есть домен обработчика приложения
-            register_left_menu(base_url=(request.host_url or "").rstrip("/"))
+            register_left_menu(base_url=public_base_from_request(request))
         except Exception as e:
             print(f"Ошибка регистрации пункта левого меню при установке: {e}")
     else:
@@ -3056,7 +3068,8 @@ def admin_placement():
         return Response("forbidden", status=403)
     # Адрес берём из самого запроса (домен, где открыли админку) — чтобы меню всегда
     # привязалось к тому же адресу, что и приложение, даже если PUBLIC_BASE_URL устарел.
-    base = (request.host_url or "").rstrip("/")
+    # Принудительно https — Битрикс работает по https, http-пункт он блокирует.
+    base = public_base_from_request(request)
     try:
         register_left_menu(base_url=base)
         return jsonify({"ok": True, "boundTo": base, "items": [
