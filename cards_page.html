@@ -242,8 +242,9 @@ td textarea{min-height:40px}
       <h2>1 · Выбор карточек</h2>
       <div class="row">
         <div class="field grow2">
-          <label class="label" for="searchInp">Поиск по артикулу / названию (необязательно)</label>
-          <input id="searchInp" type="text" placeholder="например: J05 или худи" autocomplete="off">
+          <label class="label" for="searchInp">Поиск по артикулу / названию</label>
+          <input id="searchInp" type="text" placeholder="например: J05 или худи — затем Enter" autocomplete="off">
+          <div class="note">Введите артикул и нажмите Enter (или кнопку справа) — загрузятся подходящие карточки. Оставьте пусто, чтобы загрузить все.</div>
         </div>
         <button class="btn" id="loadBtn" type="button"><span class="spin"></span><span class="lbl">Загрузить карточки с WB</span></button>
       </div>
@@ -469,6 +470,10 @@ $("loadBtn").addEventListener("click",async function(){
     else buildChangeOptions();
   }catch(e){ alert("Не удалось связаться с сервером"); }
   finally{ spinOn($("loadBtn"),false,"Загрузить карточки с WB"); fit(); }
+});
+/* Enter в поле поиска = загрузить (искать по артикулу/названию на WB) */
+$("searchInp").addEventListener("keydown",function(e){
+  if(e.key==="Enter"){ e.preventDefault(); $("loadBtn").click(); }
 });
 
 function renderPicker(cards){
