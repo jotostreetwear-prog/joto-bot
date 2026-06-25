@@ -266,12 +266,9 @@ body{
 .btn.accent{ background:var(--primary) !important; border-color:var(--primary) !important; color:#fff !important; }
 /* Вторичная кнопка — белая с рамкой (а не синяя заливка). */
 .btn.secondary{ background:var(--card) !important; color:var(--primary) !important; border-color:var(--card-bd) !important; }
-<<<<<<< HEAD
 
 /* Главное действие «отправить/создать на WB» — пурпурное (magenta). */
 #applyBtn, #confirmApply, #createFromFileBtn{
   background:var(--magenta) !important; border-color:var(--magenta) !important; color:#fff !important;
 }
 #applyBtn:hover, #confirmApply:hover, #createFromFileBtn:hover{ filter:brightness(1.06); }
-=======
->>>>>>> origin/main
