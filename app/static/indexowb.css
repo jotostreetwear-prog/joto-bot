@@ -1,0 +1,268 @@
+/* =========================================================================
+   IndexoWB — единая дизайн-система интерфейса (Направление 1, светлая тема).
+   Источник истины. Компоненты ссылаются ТОЛЬКО на токены (--*).
+   Подключается одним <link> на всех страницах ПЕРЕД их собственным <style>.
+
+   Файл делает две вещи:
+   1) Задаёт токены IndexoWB и компоненты .iw-* (для новой и будущей разметки).
+   2) «Мост совместимости» (LEGACY BRIDGE) — переопределяет старые токены
+      существующих страниц (--bg/--surface/--ink/--accent/--line/--ok…) на
+      палитру IndexoWB через !important. Важность побеждает специфичность,
+      поэтому это перекрывает блоки [data-theme="light|dark"] страниц и заодно
+      нейтрализует тёмную тему (везде показывается светлая).
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Inter:wght@300..800&display=swap');
+
+@font-face{
+  font-family:'WB Hauss VF';
+  src:url('https://static-basket-02.wbbasket.ru/vol20/portal-fonts/latest/assets/als-hauss-vf.b709e7bab16d4dd7d164.ttf') format('truetype-variations');
+  font-weight:1 850; font-style:normal; font-display:swap;
+}
+
+:root{
+  /* ---- Типографика ---- */
+  --iw-sans:'WB Hauss VF', Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --wbt-table-font:'Lato', arial, sans-serif;
+  --iw-mono:ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  /* ---- Поверхности ---- */
+  --bg:#EEF1F6;
+  --card:#FFFFFF;
+  --card-2:#F7F9FC;
+  --card-bd:#E6E9F0;
+  --hairline:#EDEFF4;
+  --shadow:0 1px 3px rgba(16,24,40,.05), 0 1px 2px rgba(16,24,40,.04);
+  --shadow-pop:0 12px 32px -10px rgba(16,24,40,.22), 0 2px 8px rgba(16,24,40,.06);
+
+  /* ---- Текст ---- */
+  --ink:#1A2233;
+  --ink-2:#5B6478;
+  --ink-3:#8A93A6;
+  --label:#9AA3B5;
+
+  /* ---- Акценты ---- */
+  --primary:#2F6BED;
+  --primary-hover:#255CD6;
+  --primary-ink:#FFFFFF;
+  --primary-soft:#E9EEFD;
+  --primary-on-soft:#2F6BED;
+  --indigo:#5B5BD6;
+  --teal:#0EA5A5;
+  --magenta:#7C3AED;
+  --purple:#7C5CFC;
+  --success:#22C55E;
+  --warning:#F59E0B;
+  --danger:#EF4444;
+
+  /* ---- Подложки бейджей (фон/текст) ---- */
+  --b-amber-bg:#FDF0D5;  --b-amber-ink:#9A6700;
+  --b-green-bg:#E6F7EC;  --b-green-ink:#15803D;
+  --b-red-bg:#FDECEC;    --b-red-ink:#B42318;
+  --b-blue-bg:#E9EEFD;   --b-blue-ink:#1D4FBF;
+  --b-violet-bg:#EFEBFE; --b-violet-ink:#5B3FC4;
+
+  /* ---- Таблицы «как кабинет WB» ---- */
+  --wbt-head-bg:#F0F0F3;
+  --wbt-hover-bg:#F0F0F3;
+  --wbt-border:#D1CFD7;
+  --wbt-text:#000;
+  --wbt-sel:#cfe3ff;
+
+  /* ---- Геометрия ---- */
+  --r-card:18px;
+  --r-panel:14px;
+  --r-ctl:10px;
+  --r-pill:999px;
+  --pad-card:22px;
+  --gap:18px;
+  --mark-r:11px;
+  --mark-bg:linear-gradient(150deg,#3D78F0,#2F6BED 55%,#2350C8);
+  --ease:cubic-bezier(.2,.7,.2,1);
+
+  /* ===================================================================
+     LEGACY BRIDGE — переопределяем токены существующих страниц.
+     !important, чтобы перекрыть [data-theme] страниц и тёмную тему.
+     =================================================================== */
+  --surface:#FFFFFF !important;
+  --surface-2:#F7F9FC !important;
+  --surface-3:#EEF1F6 !important;
+  --field:#FFFFFF !important;
+  --bg:#EEF1F6 !important;
+  --ink:#1A2233 !important;
+  --ink-2:#5B6478 !important;
+  --ink-3:#8A93A6 !important;
+  --line:#E6E9F0 !important;
+  --line-2:#D8DCE6 !important;
+  --line-strong:#1A2233 !important;
+  --accent:#2F6BED !important;
+  --accent-ink:#FFFFFF !important;
+  --accent-deep:#2F6BED !important;
+  --ok:#15803D !important;   --ok-bg:#E6F7EC !important;
+  --warn:#9A6700 !important;  --warn-bg:#FDF0D5 !important;
+  --bad:#B42318 !important;   --bad-bg:#FDECEC !important;
+  --err:#B42318 !important;
+  --zebra:#F7F9FC !important;
+  --glow:none !important;
+  /* интерфейс — WB Hauss VF; editorial-сериф убираем в пользу Hauss */
+  --sans:var(--iw-sans) !important;
+  --serif:var(--iw-sans) !important;
+  --mono:var(--iw-mono) !important;
+}
+
+/* Базовая типографика интерфейса */
+body{
+  font-family:var(--iw-sans);
+  font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+
+/* Декоративные эмодзи в шапках/навигации — скрыть (см. §5 спецификации).
+   Функциональные значки (статусы/бейджи) остаются — у них другие классы. */
+.ico{ display:none !important; }
+
+/* Тёмной темы в IndexoWB нет — прячем переключатели темы. */
+#theme-toggle{ display:none !important; }
+
+/* =========================================================================
+   КОМПОНЕНТЫ .iw-*
+   ========================================================================= */
+
+/* ---- Кнопки ---- */
+.iw-btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  font-family:var(--iw-sans); font-size:15px; font-weight:600; line-height:1;
+  padding:11px 16px; border-radius:var(--r-ctl); border:1px solid transparent;
+  cursor:pointer; white-space:nowrap; text-decoration:none;
+  transition:background .12s var(--ease), color .12s var(--ease),
+             border-color .12s var(--ease), transform .12s var(--ease);
+}
+.iw-btn:active{ transform:translateY(1px); }
+.iw-btn[disabled]{ opacity:.55; cursor:default; transform:none; }
+.iw-btn-sm{ padding:7px 12px; font-size:13px; }
+.iw-btn-block{ width:100%; padding:13px 16px; }
+.iw-btn-primary{ background:var(--primary); color:var(--primary-ink); border-color:var(--primary); }
+.iw-btn-primary:hover{ background:var(--primary-hover); border-color:var(--primary-hover); }
+.iw-btn-secondary{ background:var(--card); color:var(--ink); border-color:var(--card-bd); }
+.iw-btn-secondary:hover{ background:var(--card-2); }
+.iw-btn-submit{ background:var(--magenta); color:#fff; border-color:var(--magenta); }
+.iw-btn-submit:hover{ filter:brightness(1.06); }
+.iw-btn-process{ background:var(--teal); color:#fff; border-color:var(--teal); }
+.iw-btn-process:hover{ filter:brightness(1.05); }
+.iw-btn-danger{ background:transparent; color:var(--danger); border-color:var(--danger); }
+.iw-btn-danger:hover{ background:var(--danger); color:#fff; }
+
+/* ---- Поля ввода ---- */
+.iw-input, .iw-select, .iw-textarea{
+  width:100%; font-family:var(--iw-sans); font-size:14.5px; color:var(--ink);
+  background:var(--card); border:1px solid var(--card-bd); border-radius:var(--r-ctl);
+  padding:11px 13px; outline:none;
+  transition:border-color .12s var(--ease), box-shadow .12s var(--ease);
+}
+.iw-input::placeholder, .iw-textarea::placeholder{ color:var(--ink-3); }
+.iw-input:focus, .iw-select:focus, .iw-textarea:focus{
+  border-color:var(--primary); box-shadow:0 0 0 3px rgba(47,107,237,.18);
+}
+.iw-select{
+  -webkit-appearance:none; appearance:none; padding-right:38px; cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235B6478' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat; background-position:right 13px center;
+}
+.iw-textarea{ resize:vertical; min-height:96px; line-height:1.5; }
+
+/* ---- Карточки ---- */
+.iw-card{
+  background:var(--card); border:1px solid var(--card-bd); border-radius:var(--r-card);
+  padding:var(--pad-card); box-shadow:var(--shadow);
+}
+.iw-card-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.iw-card-title{ display:flex; align-items:center; gap:9px; font-size:17px; font-weight:600; color:var(--ink); margin:0; }
+.iw-section-title{ font-size:13px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--label); margin:0 0 10px; }
+
+/* ---- Табы-пилюли ---- */
+.iw-tab{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--iw-sans); font-size:15px; font-weight:600;
+  padding:8px 14px; border-radius:var(--r-pill); border:0; background:transparent;
+  color:var(--ink-2); cursor:pointer; transition:background .12s var(--ease), color .12s var(--ease);
+}
+.iw-tab:hover{ color:var(--ink); }
+.iw-tab.active{ background:var(--primary-soft); color:var(--primary-on-soft); }
+.iw-tab.active::before{ content:""; width:6px; height:6px; border-radius:50%; background:var(--primary); }
+
+/* ---- Сегменты (под-вкладки) ---- */
+.iw-seg{
+  font-size:13.5px; font-weight:600; padding:9px 13px; border:0; background:transparent;
+  color:var(--ink-2); cursor:pointer; border-bottom:2px solid transparent;
+}
+.iw-seg.active{ color:var(--ink); border-bottom-color:var(--primary); }
+
+/* ---- Бейджи / пилюли ---- */
+.iw-badge{
+  display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+  padding:3px 10px; border-radius:var(--r-pill);
+}
+.iw-dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
+.iw-pill{
+  display:inline-flex; align-items:center; gap:7px; font-size:13.5px; font-weight:600;
+  padding:8px 14px; border-radius:var(--r-pill); border:1px solid var(--card-bd);
+}
+.iw-badge.is-amber{ background:var(--b-amber-bg); color:var(--b-amber-ink); }
+.iw-badge.is-green{ background:var(--b-green-bg); color:var(--b-green-ink); }
+.iw-badge.is-red{ background:var(--b-red-bg); color:var(--b-red-ink); }
+.iw-badge.is-blue{ background:var(--b-blue-bg); color:var(--b-blue-ink); }
+.iw-badge.is-violet{ background:var(--b-violet-bg); color:var(--b-violet-ink); }
+
+/* ---- Метрики ---- */
+.iw-metric-num{ font-size:40px; font-weight:700; line-height:1; color:var(--ink); font-variant-numeric:tabular-nums; }
+.iw-metric-unit{ font-size:16px; font-weight:600; color:var(--ink-2); }
+
+/* ---- Бренд-знак / вордмарк ---- */
+.iw-mark{
+  width:40px; height:40px; border-radius:var(--mark-r); background:var(--mark-bg);
+  display:grid; place-items:center; color:#fff; font-weight:800; font-size:20px; flex:none;
+}
+.iw-name{ font-size:21px; font-weight:800; letter-spacing:-.02em; color:var(--ink); }
+
+/* ---- Callout ---- */
+.iw-callout{
+  padding:12px 14px; border-radius:var(--r-panel); font-size:13.5px; line-height:1.5;
+  border:1px solid var(--card-bd); background:var(--card-2); color:var(--ink-2);
+}
+.iw-callout.is-amber{ background:var(--b-amber-bg); border-color:transparent; color:var(--b-amber-ink); }
+.iw-callout.is-info{ background:var(--b-blue-bg); border-color:transparent; color:var(--b-blue-ink); }
+.iw-callout.is-success{ background:var(--b-green-bg); border-color:transparent; color:var(--b-green-ink); }
+
+/* ---- Таблицы (единый рецепт «как кабинет WB») ---- */
+.iw-table-wrap{ border:1px solid var(--wbt-border); border-radius:var(--r-panel); overflow-x:auto; }
+.iw-table{ width:100%; border-collapse:collapse; font-family:var(--wbt-table-font); font-size:16px; color:var(--wbt-text); }
+.iw-table thead th{
+  position:sticky; top:0; z-index:10; background:var(--wbt-head-bg); color:#000;
+  font-size:13px; font-weight:700; text-align:left; padding:18px 12px;
+  border-bottom:1px solid var(--wbt-border);
+}
+.iw-table tbody td{ font-size:16px; font-weight:400; line-height:20px; padding:20px 16px; border-bottom:1px solid var(--wbt-border); }
+.iw-table tbody tr:hover{ background:var(--wbt-hover-bg); }
+.iw-num{ text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+
+/* ---- Оверлей / модалка ---- */
+.iw-overlay{ position:fixed; inset:0; background:rgba(16,24,40,.45); display:grid; place-items:center; z-index:1000; padding:18px; }
+.iw-modal{
+  background:var(--card); border:1px solid var(--card-bd); border-radius:var(--r-card);
+  max-width:420px; width:100%; padding:26px; box-shadow:var(--shadow-pop);
+}
+
+/* =========================================================================
+   LEGACY COMPONENT SKIN — приводим существующие кнопки/табы к ролям IndexoWB
+   (только цвет/форма, без изменения разметки и JS-классов).
+   ========================================================================= */
+
+/* Активный таб: вместо тёмного — мягко-синий (--primary-soft). */
+.tab.active{ background:var(--primary-soft) !important; color:var(--primary-on-soft) !important; box-shadow:none !important; }
+
+/* Основные кнопки .btn (cards/app) — синие. */
+.btn{ background:var(--primary) !important; border-color:var(--primary) !important; color:#fff !important; }
+.btn:hover{ background:var(--primary-hover) !important; border-color:var(--primary-hover) !important; }
+.btn.accent{ background:var(--primary) !important; border-color:var(--primary) !important; color:#fff !important; }
+/* Вторичная кнопка — белая с рамкой (а не синяя заливка). */
+.btn.secondary{ background:var(--card) !important; color:var(--primary) !important; border-color:var(--card-bd) !important; }

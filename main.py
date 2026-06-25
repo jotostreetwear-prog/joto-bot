@@ -15,7 +15,30 @@ MSK = timezone(timedelta(hours=3))
 
 import nk_integration as nk  # интеграция с Национальным каталогом (Честный ЗНАК)
 
-app = Flask(__name__)
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app", "static")
+app = Flask(__name__, static_folder=_STATIC_DIR, static_url_path="/static")
+
+def _compute_build_marker():
+    """Метка версии статики: максимальный mtime файлов в app/static.
+    Нужна для ?v={BUILD_MARKER} — чтобы iframe Битрикса не отдавал старый кеш CSS.
+    Fallback — текущее время (если папки нет)."""
+    latest = 0.0
+    try:
+        for root, _dirs, files in os.walk(_STATIC_DIR):
+            for fn in files:
+                try:
+                    m = os.path.getmtime(os.path.join(root, fn))
+                    if m > latest:
+                        latest = m
+                except OSError:
+                    pass
+    except Exception:
+        pass
+    if latest <= 0:
+        latest = time.time()
+    return str(int(latest))
+
+BUILD_MARKER = _compute_build_marker()
 
 # ===================== КОНФИГ (переменные окружения) =====================
 
@@ -991,10 +1014,15 @@ APP_PAGE_HTML = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
 
 APP_PAGE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_page.html")
 
+def _apply_build_marker(html):
+    """Подставляет метку версии статики вместо плейсхолдера __BUILD_MARKER__,
+    чтобы ссылки на /static/*.css грузились как ?v={BUILD_MARKER}."""
+    return html.replace("__BUILD_MARKER__", BUILD_MARKER)
+
 def load_app_page():
     try:
         with open(APP_PAGE_PATH, encoding="utf-8") as f:
-            return f.read()
+            return _apply_build_marker(f.read())
     except Exception as e:
         print(f"Не удалось загрузить app_page.html: {e}")
         return APP_PAGE_HTML
@@ -1002,7 +1030,7 @@ def load_app_page():
 def load_named_page(path, fallback="<!doctype html><meta charset='utf-8'><h1>Страница не найдена</h1>"):
     try:
         with open(path, encoding="utf-8") as f:
-            return f.read()
+            return _apply_build_marker(f.read())
     except Exception as e:
         print(f"Не удалось загрузить {path}: {e}")
         return fallback
