@@ -42,6 +42,9 @@ NK_PATHS = {
     "generate_gtins": "/v3/generate-gtins",  # генерация черновиков ГТИН
     "product_create": "/v3/product-create",  # создание карточки «Единица товара»
     "product_list": "/v4/product-list",      # список товаров (статусы/ГТИНы) — подтверждён v4
+    # ⚠️ product-list доступен только ключам с ролью «Интегратор / Разработчик ПО»
+    #    (выбирается при регистрации ключа в ЛК НК). Без неё метод вернёт пустой
+    #    список или 403 — тогда выгрузка идёт только через файл (parse-nk-file).
 }
 
 # Ожидание присвоения/активации ГТИН (если нужно опрашивать список товаров).
@@ -90,6 +93,10 @@ def nk_request(method, path, params=None, json_body=None, timeout=60):
     p = dict(params or {})
     if NK_API_KEY:
         p.setdefault("apikey", NK_API_KEY)
+    # Все GET-методы НК отдают ответ в jsn/xml; по умолчанию просим JSON,
+    # иначе часть методов возвращает XML (подтверждено докой API НК ЦРПТ).
+    if method.upper() == "GET":
+        p.setdefault("format", "jsn")
     headers = {}
     if NK_TOKEN:
         headers["Authorization"] = f"Bearer {NK_TOKEN}"
@@ -211,7 +218,14 @@ def _good_attrs_map(g):
         if not isinstance(a, dict):
             continue
         aid = a.get("attr_id") or a.get("id")
-        val = a.get("values") if "values" in a else a.get("value")
+        # Реальный ответ НК: атрибут несёт attr_value / attr_value_id (подтверждено
+        # докой API НК). Оставляем и старые ключи values/value как фолбэк.
+        if "values" in a:
+            val = a.get("values")
+        elif "attr_value" in a:
+            val = a.get("attr_value")
+        else:
+            val = a.get("value")
         if isinstance(val, list):
             parts = []
             for v in val:

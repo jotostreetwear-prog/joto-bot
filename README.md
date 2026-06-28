@@ -86,7 +86,7 @@ GET /admin/bitrix/placement?secret=<BITRIX_CLIENT_SECRET>
 Переменные окружения (Railway → Variables):
 - `NK_API_KEY` — apikey Национального каталога
 - `NK_PARTY_ID` — идентификатор владельца товара (party_id)
-- `NK_BASE_URL` — базовый URL API НК (по умолчанию `https://api.national-catalog.ru`; сверьте с документацией)
+- `NK_BASE_URL` — базовый URL API НК (по умолчанию `https://апи.национальный-каталог.рф` — боевой контур, подтверждён докой ЦРПТ)
 
 Пока ключи не заданы, шаг ГТИНов в интерфейсе показывает «интеграция не настроена» и не мешает остальной работе раздела. Эндпоинты: `GET /api/nk/status`, `POST /api/nk/create-gtins`.
 
