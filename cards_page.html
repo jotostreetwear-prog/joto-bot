@@ -157,6 +157,7 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-a
 th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
 td input,td textarea{font-size:14px;padding:8px 10px}
 td textarea{min-height:40px}
+#filePreview td input{width:100%;box-sizing:border-box;min-width:90px}
 .tbl-wrap{overflow:auto;border:1.5px solid var(--line);border-radius:var(--r)}
 .del-row{background:transparent;border:1px solid var(--line);color:var(--err);border-radius:8px;cursor:pointer;font-size:16px;width:30px;height:30px;line-height:1}
 .charcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:6px}
@@ -527,6 +528,25 @@ function bxLoadUser(){
   try{ BX24.callMethod("user.current",{},function(r){
     try{ var d=r.data()||{}; CURRENT_USER=((d.NAME||"")+" "+(d.LAST_NAME||"")).trim()||d.EMAIL||(d.ID?("ID "+d.ID):""); }catch(e){}
   }); }catch(e){}
+}
+
+/* Постановка задачи логисту Дарье на создание ЧЗ при генерации артикула */
+var DARIA_RESPONSIBLE_ID=208; // Дарья-логист (Bitrix24 ID, профиль /user/208/)
+function bxCreateChzTask(article,meta){
+  if(typeof BX24==="undefined"){ return; } // вне Битрикса задачу не ставим
+  try{
+    BX24.callMethod("tasks.task.add",{fields:{
+      TITLE:"Сделать ЧЗ для артикула "+article,
+      DESCRIPTION:"Новый артикул JOTO: "+article+(meta?("\n"+meta):"")+"\n\nНужно завести ШК и Честный ЗНак (ЧЗ) на этот артикул.",
+      RESPONSIBLE_ID:DARIA_RESPONSIBLE_ID
+    }},function(res){
+      try{
+        if(res.error()){ showStatus($("artStatus"),false,"Артикул создан, но задача Дарье не поставилась: "+res.error()); }
+        else { var t=(res.data()||{}).task||{}; var id=t.id||t.ID||""; showStatus($("artStatus"),true,"✓ Задача Дарье на ЧЗ поставлена"+(id?(" (№"+id+")"):"")+"."); }
+      }catch(e){}
+      fit();
+    });
+  }catch(e){}
 }
 (function(){
   var q=location.search||"";
@@ -1064,16 +1084,29 @@ function collectCharcs(){
 var FILE_GROUPS=null;
 function cleanTitle(n){ return String(n||"").replace(/,?\s*размер.*$/i,"").trim(); }
 function renderFilePreview(){
-  var arts=Object.keys(FILE_GROUPS);
-  if(arts.length===0){ $("filePreview").innerHTML=""; $("createFromFileBtn").style.display="none"; return; }
-  var html='<div class="tbl-wrap"><table><thead><tr><th>Артикул</th><th>Наименование</th><th>Цвет</th><th>Состав</th><th>ТНВЭД</th><th>Размеры → ГТИН</th></tr></thead><tbody>';
+  var arts=FILE_GROUPS?Object.keys(FILE_GROUPS):[];
+  if(arts.length===0){ $("filePreview").innerHTML=FILE_GROUPS?'<div class="muted">Все артикулы удалены — загрузите файл заново или удалите его.</div>':""; $("createFromFileBtn").style.display="none"; return; }
+  var html='<div class="tbl-wrap"><table><thead><tr><th></th><th>Артикул</th><th>Наименование</th><th>Цвет <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(через запятую)</span></th><th>Состав</th><th>ТНВЭД</th><th>Размеры → ГТИН</th></tr></thead><tbody>';
   arts.forEach(function(a){
     var g=FILE_GROUPS[a];
     var sizes=g.sizes.map(function(s){return esc(s.size||"б/р")+" → "+(s.gtin?esc(s.gtin):"<span style=\"color:var(--err)\">нет ГТИН</span>");}).join("<br>");
-    html+='<tr><td class="pick-vc">'+esc(a)+'</td><td>'+esc(g.title)+'</td><td>'+esc(g.color||"")+'</td><td>'+esc(g.composition||"")+'</td><td style="font-family:var(--mono);font-size:12px">'+esc(g.tnved||"")+'</td><td style="font-family:var(--mono);font-size:12px">'+sizes+'</td></tr>';
+    html+='<tr data-art="'+esc(a)+'">'
+      +'<td><button type="button" class="fp-del" data-art="'+esc(a)+'" title="Удалить артикул" style="border:none;background:transparent;color:var(--err);font-size:17px;cursor:pointer;line-height:1;padding:0 4px">✕</button></td>'
+      +'<td class="pick-vc">'+esc(a)+'</td>'
+      +'<td><input type="text" data-art="'+esc(a)+'" data-field="title" value="'+esc(g.title||"")+'" autocomplete="off"></td>'
+      +'<td><input type="text" data-art="'+esc(a)+'" data-field="color" value="'+esc(g.color||"")+'" placeholder="напр. чёрный, белый" autocomplete="off"></td>'
+      +'<td><input type="text" data-art="'+esc(a)+'" data-field="composition" value="'+esc(g.composition||"")+'" autocomplete="off"></td>'
+      +'<td><input type="text" data-art="'+esc(a)+'" data-field="tnved" value="'+esc(g.tnved||"")+'" style="font-family:var(--mono);font-size:12px" autocomplete="off"></td>'
+      +'<td style="font-family:var(--mono);font-size:12px">'+sizes+'</td></tr>';
   });
   html+='</tbody></table></div>';
   $("filePreview").innerHTML=html;
+  $("filePreview").querySelectorAll(".fp-del").forEach(function(b){
+    b.addEventListener("click",function(){ delete FILE_GROUPS[b.dataset.art]; renderFilePreview(); fit(); });
+  });
+  $("filePreview").querySelectorAll("input[data-field]").forEach(function(inp){
+    inp.addEventListener("input",function(){ var g=FILE_GROUPS[inp.dataset.art]; if(g) g[inp.dataset.field]=inp.value; });
+  });
   $("createFromFileBtn").style.display="";
 }
 function applyNkRows(j){
@@ -1154,7 +1187,10 @@ $("createFromFileBtn").addEventListener("click",async function(){
     var g=FILE_GROUPS[a];
     var chMap={}; for(var k in baseCh) chMap[k]=baseCh[k].slice();   // из образца
     if(compId&&g.composition) chMap[compId]=[String(g.composition)]; // из файла ЧЗ
-    if(colorId&&g.color) chMap[colorId]=[String(g.color)];
+    if(colorId&&g.color){ // цвет(а) — через запятую, в т.ч. несколько вариантов
+      var cols=String(g.color).split(",").map(function(s){return s.trim();}).filter(Boolean);
+      if(cols.length) chMap[colorId]=cols;
+    }
     if(tnvedId&&g.tnved) chMap[tnvedId]=[String(g.tnved)];
     manualCharcs.forEach(function(o){ if(o.id!=null&&o.value&&o.value.length) chMap[o.id]=o.value; }); // доп.
     var ch=Object.keys(chMap).map(function(id){ return {id:parseInt(id,10), value:chMap[id]}; });
@@ -1321,6 +1357,7 @@ $("artCreateBtn").addEventListener("click",async function(){
       $("artMeta").textContent=(j.category_title||"")+" · "+(j.color||"")+" · модель "+(j.model_number||"");
       $("artResult").style.display="block";
       artRefreshHint();
+      bxCreateChzTask(j.article,(j.category_title||"")+" · "+(j.color||"")); // задача Дарье на ЧЗ
     } else showStatus($("artStatus"),false,(j&&j.error)?j.error:"Не удалось создать артикул");
   }catch(e){ showStatus($("artStatus"),false,"Не удалось связаться с сервером"); }
   finally{ spinOn($("artCreateBtn"),false,"Создать артикул"); fit(); }
