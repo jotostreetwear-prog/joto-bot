@@ -459,12 +459,12 @@ td textarea{min-height:40px}
     <div class="block">
       <h2>Какие артикулы рекомендовать</h2>
       <p class="note" style="margin-top:0">По каждому артикулу: <b>🔗 Сейчас рекомендуется в товарах</b> — в комплекте каких ваших товаров этот артикул уже стоит,
-        и <b>🧩 Что советует бот</b> — комплект (дополняющие товары к верху низ/аксессуары и наоборот, по возможности в тон).
-        Найдите артикул или выберите категорию из списка.</p>
+        <b>🧩 Что советует бот</b> — комплект (дополняющие товары), и <b>✅ Статус</b> — отметка менеджера (согласовано / поставлено на WB).
+        Выберите артикул или категорию из списка.</p>
       <div class="row" style="margin-top:14px">
         <div class="field grow2">
-          <label class="label" for="recSearch">Артикул / название (пусто = все)</label>
-          <input id="recSearch" type="text" placeholder="например: J05 или худи — затем Enter" autocomplete="off">
+          <label class="label" for="recPick">Артикул</label>
+          <select id="recPick"><option value="">Все артикулы</option></select>
         </div>
         <div class="field">
           <label class="label" for="recCat">Категория</label>
@@ -557,6 +557,7 @@ function setMode(m){
   $("panel-recommend").hidden=(m!=="recommend");
   $("panel-checklist").hidden=(m!=="checklist");
   if(m==="checklist"){ var f=$("checklistFrame"); if(f && !f.src) f.src=CHECKLIST_URL; }
+  if(m==="recommend" && !REC_ALL.length && !REC_LOADING){ loadRecommendations(); }
   fit();
 }
 /* плитки на «Обзоре» открывают нужную вкладку */
@@ -591,7 +592,17 @@ function recAdvice(c){
   return '<b>Поставьте к этому товару в рекомендации комплект</b> ('+comp.length+' арт.): '+esc(Object.keys(cats).join(", "))+'.'
     +'<div class="muted" style="margin-top:4px">Подобрано в тон ('+esc(c.color||"нейтральные")+'). Например: '+esc(arts)+'.</div>';
 }
-var REC_ALL=[];
+var REC_ALL=[], REC_LOADING=false;
+/* статус совета бота — отметка менеджера, хранится в браузере (localStorage) */
+var REC_STATUSES=[["","— новое —","var(--surface-2)","var(--ink-2)"],
+                  ["ok","✅ Согласовано","#E6F7EC","#15803D"],
+                  ["wb","🟢 Поставлено на WB","#E9EEFD","#1D4FBF"]];
+function recStatusLoad(){ try{return JSON.parse(localStorage.getItem("jotoRecStatus")||"{}");}catch(e){return {};} }
+function recStatusSave(map){ try{localStorage.setItem("jotoRecStatus",JSON.stringify(map));}catch(e){} }
+function recStatusStyle(sel){
+  var s=REC_STATUSES.filter(function(o){return o[0]===sel.value;})[0]||REC_STATUSES[0];
+  sel.style.background=s[2]; sel.style.color=s[3]; sel.style.fontWeight="600";
+}
 function recFillCats(){
   var cats={}; REC_ALL.forEach(function(c){ if(c.subjectName) cats[c.subjectName]=(cats[c.subjectName]||0)+1; });
   var names=Object.keys(cats).sort(function(a,b){return a.localeCompare(b,'ru');});
@@ -599,38 +610,58 @@ function recFillCats(){
   names.forEach(function(n){ html+='<option value="'+esc(n)+'">'+esc(n)+' ('+cats[n]+')</option>'; });
   $("recCat").innerHTML=html;
 }
+function recFillPick(){
+  var html='<option value="">Все артикулы ('+REC_ALL.length+')</option>';
+  REC_ALL.forEach(function(c){ html+='<option value="'+esc(c.vendorCode||"")+'">'+esc(c.vendorCode||"—")+' — '+esc(c.title||"")+'</option>'; });
+  $("recPick").innerHTML=html;
+}
 function recRenderTable(){
-  var cat=$("recCat").value;
-  var list=cat?REC_ALL.filter(function(c){return (c.subjectName||"")===cat;}):REC_ALL;
-  if(!list.length){ $("recResults").innerHTML='<div class="block"><span class="muted">Нет артикулов для выбранной категории.</span></div>'; return; }
+  if(!REC_ALL.length){ $("recResults").innerHTML=""; return; }
+  var pick=$("recPick").value, cat=$("recCat").value;
+  var list=REC_ALL;
+  if(pick) list=REC_ALL.filter(function(c){return c.vendorCode===pick;});
+  else if(cat) list=REC_ALL.filter(function(c){return (c.subjectName||"")===cat;});
+  if(!list.length){ $("recResults").innerHTML='<div class="block"><span class="muted">Нет артикулов под выбранный фильтр.</span></div>'; return; }
+  var smap=recStatusLoad();
   var rows=list.map(function(c){
+    var vc=c.vendorCode||"";
+    var opts=REC_STATUSES.map(function(o){ return '<option value="'+o[0]+'"'+(smap[vc]===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("");
     return '<tr><td style="white-space:nowrap"><div style="display:flex;gap:10px;align-items:flex-start">'+recThumb(c.photo)
-      +'<div><b class="pick-vc">'+esc(c.vendorCode||"—")+'</b>'
+      +'<div><b class="pick-vc">'+esc(vc||"—")+'</b>'
       +'<div class="muted">'+esc(c.title||"")+'<br>'+esc(c.subjectName||"")+(c.color?(' · '+esc(c.color)):"")+'</div></div></div></td>'
       +'<td>'+recCell(c.recommended_by,"пока нигде не рекомендуется")+'</td>'
       +'<td style="min-width:300px">'+recCell(c.complement,"нет дополняющих в каталоге")
-        +'<div style="margin-top:8px">'+recAdvice(c)+'</div></td></tr>';
+        +'<div style="margin-top:8px">'+recAdvice(c)+'</div></td>'
+      +'<td><select class="rec-status" data-vc="'+esc(vc)+'" style="min-width:170px">'+opts+'</select></td></tr>';
   }).join("");
   $("recResults").innerHTML='<div class="block"><div class="tbl-wrap"><table><thead><tr>'
-    +'<th>Товар</th><th>🔗 Сейчас рекомендуется в товарах</th><th>🧩 Что советует бот</th>'
+    +'<th>Товар</th><th>🔗 Сейчас рекомендуется в товарах</th><th>🧩 Что советует бот</th><th>✅ Статус</th>'
     +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  $("recResults").querySelectorAll(".rec-status").forEach(function(sel){
+    recStatusStyle(sel);
+    sel.addEventListener("change",function(){
+      var map=recStatusLoad(); map[sel.dataset.vc]=sel.value; recStatusSave(map); recStatusStyle(sel);
+    });
+  });
 }
-$("recRunBtn").addEventListener("click",async function(){
-  spinOn($("recRunBtn"),true,"Подбираю…");
+async function loadRecommendations(){
+  if(REC_LOADING) return;
+  REC_LOADING=true; spinOn($("recRunBtn"),true,"Загружаю…");
   $("recResults").innerHTML=""; $("recStatus").className="status";
   try{
-    var j=await api("/api/wb/recommendations?search="+encodeURIComponent($("recSearch").value.trim()));
+    var j=await api("/api/wb/recommendations");
     if(!j.ok){ showStatus($("recStatus"),false,"Ошибка WB: "+(j.error||"")); return; }
     if((j.count||0)===0){ showStatus($("recStatus"),false,"Артикулы не найдены"); return; }
     REC_ALL=j.cards||[];
-    recFillCats();
-    showStatus($("recStatus"),true,"Подобрано по "+j.count+" артикул(ам) из каталога ("+(j.total_catalog||j.count)+" карточек). Можно отфильтровать по категории.");
+    recFillPick(); recFillCats();
+    showStatus($("recStatus"),true,"Загружено артикулов: "+REC_ALL.length+". Выберите артикул или категорию из списка.");
     recRenderTable();
   }catch(e){ showStatus($("recStatus"),false,"Не удалось связаться с сервером"); }
-  finally{ spinOn($("recRunBtn"),false,"Подобрать рекомендации"); fit(); }
-});
-$("recCat").addEventListener("change",function(){ if(REC_ALL.length) recRenderTable(); });
-$("recSearch").addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); $("recRunBtn").click(); } });
+  finally{ spinOn($("recRunBtn"),false,"Обновить"); REC_LOADING=false; fit(); }
+}
+$("recRunBtn").addEventListener("click",loadRecommendations);
+$("recPick").addEventListener("change",function(){ if($("recPick").value) $("recCat").value=""; recRenderTable(); });
+$("recCat").addEventListener("change",function(){ if($("recCat").value) $("recPick").value=""; recRenderTable(); });
 
 /* ============================================================
    РЕДАКТИРОВАНИЕ
