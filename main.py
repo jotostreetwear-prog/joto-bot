@@ -1252,6 +1252,56 @@ def simplify_card(c):
         "raw": c,
     }
 
+def card_recommendations(card):
+    """«Бот»-советчик: по упрощённой карточке (см. simplify_card) выдаёт список
+    конкретных рекомендаций, что улучшить. Правила, без внешних зависимостей —
+    позже можно дополнить данными по CTR/продажам."""
+    recs = []
+    photos = card.get("photos") or 0
+    desc = (card.get("description") or "").strip()
+    title = (card.get("title") or "").strip()
+    chars = card.get("characteristics") or []
+    barcodes = card.get("barcodes") or []
+
+    def is_filled(v):
+        if v in (None, "", []):
+            return False
+        if isinstance(v, (list, tuple)):
+            return any(str(x).strip() for x in v)
+        return bool(str(v).strip())
+    filled = [c for c in chars if is_filled(c.get("value"))]
+
+    if photos == 0:
+        recs.append({"tag": "Фото", "level": "bad", "text": "Нет фото — добавьте минимум 3–5 фотографий (главный фактор конверсии)."})
+    elif photos < 4:
+        recs.append({"tag": "Фото", "level": "warn", "text": f"Мало фото ({photos}) — добавьте до 5+ ракурсов."})
+
+    if not desc:
+        recs.append({"tag": "Описание", "level": "bad", "text": "Пустое описание — заполните SEO-описание с ключевыми словами."})
+    elif len(desc) < 200:
+        recs.append({"tag": "Описание", "level": "warn", "text": f"Короткое описание ({len(desc)} симв.) — расширьте до 1000+ с ключевыми словами."})
+
+    if not title:
+        recs.append({"tag": "Название", "level": "bad", "text": "Пустое название карточки."})
+    elif len(title) < 20:
+        recs.append({"tag": "Название", "level": "warn", "text": "Короткое название — добавьте ключевые слова и характеристики."})
+
+    if len(filled) < 5:
+        recs.append({"tag": "Характеристики", "level": "warn", "text": f"Заполнено мало характеристик ({len(filled)}) — заполните больше для ранжирования и фильтров."})
+
+    if not barcodes:
+        recs.append({"tag": "Баркод", "level": "bad", "text": "Нет баркода (ГТИН) — карточка может не уйти в продажу."})
+
+    # уровень карточки: bad если есть критичное, warn если только предупреждения
+    if any(r["level"] == "bad" for r in recs):
+        level = "bad"
+    elif recs:
+        level = "warn"
+    else:
+        level = "ok"
+    return {"level": level, "recs": recs}
+
+
 def build_update_object(c):
     """Полный объект для /content/v2/cards/update — иначе WB сотрёт незаполненные поля."""
     return {
@@ -1385,6 +1435,50 @@ def api_wb_cards():
                      or q in (c.get("title") or "").lower()]
         return jsonify({"ok": True, "count": len(cards),
                         "cards": [simplify_card(c) for c in cards]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+@app.route("/api/wb/recommendations", methods=["GET"])
+def api_wb_recommendations():
+    """Анализ карточек WB и рекомендации «бота» по каждому артикулу."""
+    search = (request.args.get("search", "") or "").strip()
+    try:
+        max_cards = int(request.args.get("limit", "1000"))
+    except Exception:
+        max_cards = 1000
+    try:
+        cards = wb_fetch_cards(text_search=search, limit=100, max_cards=max_cards)
+        if search and not cards:
+            q = search.lower()
+            allc = wb_fetch_cards(text_search="", limit=100, max_cards=max(max_cards, 1000))
+            cards = [c for c in allc
+                     if q in (c.get("vendorCode") or "").lower()
+                     or q in (c.get("title") or "").lower()]
+        out, n_bad, n_warn, n_ok = [], 0, 0, 0
+        for c in cards:
+            sc = simplify_card(c)
+            r = card_recommendations(sc)
+            if r["level"] == "bad":
+                n_bad += 1
+            elif r["level"] == "warn":
+                n_warn += 1
+            else:
+                n_ok += 1
+            out.append({
+                "nmID": sc.get("nmID"),
+                "vendorCode": sc.get("vendorCode"),
+                "title": sc.get("title"),
+                "subjectName": sc.get("subjectName"),
+                "photos": sc.get("photos"),
+                "level": r["level"],
+                "recs": r["recs"],
+            })
+        # сначала проблемные (bad → warn → ok)
+        order = {"bad": 0, "warn": 1, "ok": 2}
+        out.sort(key=lambda x: order.get(x["level"], 3))
+        return jsonify({"ok": True, "count": len(out),
+                        "summary": {"bad": n_bad, "warn": n_warn, "ok": n_ok},
+                        "cards": out})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 

@@ -185,6 +185,7 @@ td textarea{min-height:40px}
     <button class="tab" data-mode="article" type="button">🅙 Генерация артикулов</button>
     <button class="tab" data-mode="edit" type="button">✎ Редактирование карточек</button>
     <button class="tab" data-mode="create" type="button">＋ Создание карточек</button>
+    <button class="tab" data-mode="recommend" type="button">💡 Рекомендации</button>
     <button class="tab" data-mode="checklist" type="button">✓ Чек-лист</button>
   </div>
 
@@ -394,7 +395,7 @@ td textarea{min-height:40px}
     </div>
 
     <div class="block" id="nkBlock" style="border-color:var(--accent)">
-      <h2>1 · Создание из Честного ЗНАка (по файлу от менеджера)</h2>
+      <h2>Создание из Честного ЗНАка (по файлу от менеджера)</h2>
       <div class="row">
         <div class="field grow2">
           <label class="label" for="subjSearch">Категория WB</label>
@@ -438,13 +439,33 @@ td textarea{min-height:40px}
     </div>
 
     <div class="block" id="charcsBlock" hidden>
-      <h2>2 · Доп. характеристики (необязательно)</h2>
+      <h2>Доп. характеристики (необязательно)</h2>
       <p class="note" style="margin-top:0">Состав, цвет и ТНВЭД подтягиваются из файла автоматически. Здесь можно
         добавить недостающие обязательные характеристики категории (применятся ко всем карточкам).</p>
       <button class="btn secondary sm" id="loadCharcsBtn" type="button" style="margin-top:8px"><span class="spin"></span><span class="lbl">Загрузить характеристики категории</span></button>
       <div class="charcs" id="charcsBox"></div>
     </div>
 
+  </section>
+
+  <!-- ============ РЕКОМЕНДАЦИИ ============ -->
+  <section class="panel" id="panel-recommend" hidden>
+    <div class="block">
+      <h2>Рекомендации по карточкам</h2>
+      <p class="note" style="margin-top:0">Бот проверяет ваши карточки на Wildberries и по каждому артикулу советует, что улучшить:
+        фото, SEO-описание, название, характеристики, баркод. Сначала показываются карточки с проблемами.</p>
+      <div class="row" style="margin-top:14px">
+        <div class="field grow2">
+          <label class="label" for="recSearch">Артикул / название (пусто = все карточки)</label>
+          <input id="recSearch" type="text" placeholder="например: J05 или худи — затем Enter" autocomplete="off">
+        </div>
+        <button class="btn accent" id="recRunBtn" type="button"><span class="spin"></span><span class="lbl">Проанализировать карточки</span></button>
+      </div>
+      <div id="recSummary" class="row" style="margin-top:14px;gap:8px;display:none"></div>
+      <div class="status" id="recStatus"></div>
+    </div>
+
+    <div id="recResults"></div>
   </section>
 
   <!-- ============ ЧЕК-ЛИСТ (встроенное приложение) ============ -->
@@ -523,6 +544,7 @@ function setMode(m){
   $("panel-article").hidden=(m!=="article");
   $("panel-edit").hidden=(m!=="edit");
   $("panel-create").hidden=(m!=="create");
+  $("panel-recommend").hidden=(m!=="recommend");
   $("panel-checklist").hidden=(m!=="checklist");
   if(m==="checklist"){ var f=$("checklistFrame"); if(f && !f.src) f.src=CHECKLIST_URL; }
   fit();
@@ -531,6 +553,41 @@ function setMode(m){
 document.querySelectorAll(".home-card").forEach(function(card){
   card.addEventListener("click",function(){ setMode(card.dataset.go); });
 });
+
+/* ============================================================
+   РЕКОМЕНДАЦИИ (бот-советчик по карточкам)
+============================================================ */
+function recColor(l){ return l==="bad"?"#B42318":(l==="warn"?"#9A6700":"#15803D"); }
+function recPill(bg,fg,txt){ return '<span style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-weight:600;font-size:13px;background:'+bg+';color:'+fg+'">'+txt+'</span>'; }
+$("recRunBtn").addEventListener("click",async function(){
+  spinOn($("recRunBtn"),true,"Анализирую…");
+  $("recResults").innerHTML=""; $("recSummary").style.display="none"; $("recStatus").className="status";
+  try{
+    var j=await api("/api/wb/recommendations?limit=1000&search="+encodeURIComponent($("recSearch").value.trim()));
+    if(!j.ok){ showStatus($("recStatus"),false,"Ошибка WB: "+(j.error||"")); return; }
+    if((j.count||0)===0){ showStatus($("recStatus"),false,"Карточки не найдены"); return; }
+    var s=j.summary||{};
+    $("recSummary").innerHTML=recPill("#FDECEC","#B42318","⛔ Проблемы: "+(s.bad||0))
+      +recPill("#FDF0D5","#9A6700","⚠ Замечания: "+(s.warn||0))
+      +recPill("#E6F7EC","#15803D","✓ Хорошо: "+(s.ok||0));
+    $("recSummary").style.display="";
+    var rows=j.cards.map(function(c){
+      var recHtml;
+      if(c.level==="ok"){ recHtml='<span style="color:#15803D;font-weight:600">✓ Всё заполнено хорошо</span>'; }
+      else{
+        recHtml='<ul style="margin:0;padding-left:18px">'+(c.recs||[]).map(function(r){
+          return '<li style="margin:3px 0"><b style="color:'+recColor(r.level)+'">'+esc(r.tag)+':</b> '+esc(r.text)+'</li>';
+        }).join("")+'</ul>';
+      }
+      return '<tr><td class="pick-vc" style="border-left:3px solid '+recColor(c.level)+'">'+esc(c.vendorCode||"—")
+        +'</td><td>'+esc(c.title||"")+'<div class="muted">'+esc(c.subjectName||"")+' · фото: '+(c.photos||0)+'</div></td>'
+        +'<td>'+recHtml+'</td></tr>';
+    }).join("");
+    $("recResults").innerHTML='<div class="block"><div class="tbl-wrap"><table><thead><tr><th>Артикул</th><th>Карточка</th><th>Рекомендации бота</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  }catch(e){ showStatus($("recStatus"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("recRunBtn"),false,"Проанализировать карточки"); fit(); }
+});
+$("recSearch").addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); $("recRunBtn").click(); } });
 
 /* ============================================================
    РЕДАКТИРОВАНИЕ
