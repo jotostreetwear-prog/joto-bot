@@ -459,8 +459,10 @@ td textarea{min-height:40px}
     <div class="block">
       <h2>Какие артикулы рекомендовать</h2>
       <p class="note" style="margin-top:0">По каждому артикулу: <b>🔗 Сейчас рекомендуется в товарах</b> — в комплекте каких ваших товаров этот артикул уже стоит,
-        <b>🧩 Что советует бот</b> — комплект (дополняющие товары), и <b>✅ Статус</b> — отметка менеджера (согласовано / поставлено на WB).
+        <b>🧩 Что советует бот</b> — комплект (дополняющие товары для рекомендаций), и <b>✅ Статус</b> — ручная отметка менеджера.
         Выберите артикул или категорию из списка.</p>
+      <p class="note" style="margin-top:6px;color:var(--ink-3)">Wildberries закрыл API рекомендаций, поэтому бот их сам не проставляет. Порядок: бот советует комплект → менеджер вносит рекомендации
+        <b>вручную в кабинете WB</b> → отмечает здесь статусом (<b>новое → согласовано → поставлено на WB</b>) для контроля.</p>
       <div class="row" style="margin-top:14px">
         <div class="field">
           <label class="label" for="recCat">Категория</label>
@@ -698,13 +700,19 @@ function recRenderTable(){
       REC_STATUS_MAP[vc]={status:sel.value, by:CURRENT_USER, at:now}; recStatusStyle(sel);
       var meta=sel.parentNode.querySelector(".rec-meta"); if(meta) meta.innerHTML=recMetaText(REC_STATUS_MAP[vc]);
       recSaveStatus(vc,sel.value);
-      if(sel.value==="ok") recApplyToWb(vc, sel, meta);  // по согласованию — бот ставит на WB
+      /* Авто-постановка на WB отключена: WB закрыл API рекомендаций (PLUG-404).
+         Рекомендации проставляются вручную в кабинете WB; статус — отметка менеджера.
+         Если WB вернёт API — раскомментировать: recApplyToWb(vc, sel, meta) на "ok". */
     });
   });
 }
 function recSaveStatus(vc,status){
+  /* Статусы хранятся в БД (общие, не теряются при обновлении). Если сохранить
+     не удалось — сообщаем, чтобы отметка не пропала молча. */
   api("/api/wb/rec-status",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({vendorCode:vc,status:status,by:CURRENT_USER})}).catch(function(){});
+    body:JSON.stringify({vendorCode:vc,status:status,by:CURRENT_USER})})
+    .then(function(j){ if(!j||!j.ok) showStatus($("recStatus"),false,"⚠ Статус «"+vc+"» не сохранился (проверьте БД) — повторите."); })
+    .catch(function(){ showStatus($("recStatus"),false,"⚠ Статус «"+vc+"» не сохранился (нет связи) — повторите."); });
 }
 /* По «Согласовано» — бот ставит комплект бота в рекомендации карточки на WB. */
 function recMetaSet(meta,html){ if(meta) meta.innerHTML=html; }
@@ -774,7 +782,7 @@ async function loadRecommendations(){
     REC_ALL=j.cards||[];
     try{ var js=await api("/api/wb/rec-status"); REC_STATUS_MAP=(js&&js.ok&&js.statuses)?js.statuses:{}; }catch(e){ REC_STATUS_MAP={}; }
     recFillCats(); recFillPick();
-    $("recBulk").style.display="block";
+    /* recBulk скрыт: WB закрыл API рекомендаций (PLUG-404), массовая постановка недоступна. */
     showStatus($("recStatus"),true,"Загружено артикулов: "+REC_ALL.length+". Статусы общие для всех. Выберите категорию, затем артикул.");
     recRenderTable();
   }catch(e){ showStatus($("recStatus"),false,"Не удалось связаться с сервером"); }
