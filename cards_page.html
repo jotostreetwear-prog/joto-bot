@@ -336,6 +336,63 @@ td textarea{min-height:40px}
 
   <!-- ============ СОЗДАНИЕ ============ -->
   <section class="panel" id="panel-create" hidden>
+    <div class="block" id="cloneBlock" style="border-color:var(--accent)">
+      <h2>★ Создать в разных цветах на основе действующей карточки</h2>
+      <p class="note" style="margin-top:0">Найдите готовую карточку-образец (например, действующую худи) — её характеристики, габариты и размеры
+        подставятся (можно поправить). Укажите цвета: для каждого создастся <b>отдельная карточка</b> с автогенерацией артикула JOTO и новыми баркодами.</p>
+
+      <div class="row" style="margin-top:12px">
+        <div class="field grow2">
+          <label class="label" for="cloneSearch">Поиск карточки-образца (артикул или название)</label>
+          <input id="cloneSearch" type="text" placeholder="например: худи — затем Enter" autocomplete="off">
+        </div>
+        <button class="btn" id="cloneLoadBtn" type="button"><span class="spin"></span><span class="lbl">Найти карточки</span></button>
+      </div>
+      <div class="picker" id="cloneList" style="margin-top:12px;display:none"></div>
+
+      <div id="cloneEditor" style="display:none;margin-top:16px;border-top:1.5px solid var(--line);padding-top:16px">
+        <div class="row">
+          <div class="field">
+            <label class="label" for="cloneCat">Категория JOTO (для артикула)</label>
+            <select id="cloneCat"><option value="">— выберите —</option></select>
+          </div>
+          <div class="field grow2">
+            <label class="label" for="cloneColors">Цвета (через запятую)</label>
+            <input id="cloneColors" type="text" placeholder="чёрный, белый, серый" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:12px">
+          <div class="field grow2"><label class="label" for="cloneTitle">Название</label><input id="cloneTitle" type="text" autocomplete="off"></div>
+          <div class="field"><label class="label" for="clonePrice">Цена, ₽</label><input id="clonePrice" type="number"></div>
+        </div>
+
+        <div class="row" style="margin-top:12px">
+          <div class="field"><label class="label" for="cloneLen">Длина, см</label><input id="cloneLen" type="number"></div>
+          <div class="field"><label class="label" for="cloneWid">Ширина, см</label><input id="cloneWid" type="number"></div>
+          <div class="field"><label class="label" for="cloneHei">Высота, см</label><input id="cloneHei" type="number"></div>
+          <div class="field"><label class="label" for="cloneWei">Вес брутто, кг</label><input id="cloneWei" type="number" step="0.01"></div>
+        </div>
+
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink-2);margin-top:10px">
+          <input type="checkbox" id="cloneTitleColor" checked style="width:18px;height:18px;flex:none"> Добавлять цвет к названию (например «Худи чёрный»)
+        </label>
+
+        <div class="field" style="margin-top:12px"><label class="label" for="cloneDesc">Описание</label><textarea id="cloneDesc"></textarea></div>
+        <div class="field" style="margin-top:12px"><label class="label" for="cloneBrand">Бренд</label><input id="cloneBrand" type="text" autocomplete="off"></div>
+
+        <h2 style="margin-top:18px">Характеристики образца</h2>
+        <p class="note" style="margin-top:0">Скопированы из найденной карточки — можно поправить. Поле «Цвет» подставится автоматически для каждого цвета.</p>
+        <div class="charcs" id="cloneCharcs"></div>
+        <div class="note" id="cloneSizes" style="margin-top:12px"></div>
+
+        <button class="btn accent" id="cloneCreateBtn" type="button" style="margin-top:16px">
+          <span class="spin"></span><span class="lbl">Создать карточки в цветах на WB</span>
+        </button>
+        <div class="status" id="cloneStatus"></div>
+      </div>
+    </div>
+
     <div class="block">
       <h2>1 · Категория и общие поля</h2>
       <div class="row">
@@ -394,55 +451,6 @@ td textarea{min-height:40px}
         добавить недостающие обязательные характеристики категории (применятся ко всем карточкам).</p>
       <button class="btn secondary sm" id="loadCharcsBtn" type="button" style="margin-top:8px"><span class="spin"></span><span class="lbl">Загрузить характеристики категории</span></button>
       <div class="charcs" id="charcsBox"></div>
-    </div>
-
-    <div class="block" id="cloneBlock" style="border-color:var(--accent)">
-      <h2>4 · Создать в разных цветах на основе действующей карточки</h2>
-      <p class="note" style="margin-top:0">Найдите готовую карточку-образец (например, действующую худи) — её характеристики, габариты и размеры
-        скопируются. Укажите цвета: для каждого создастся <b>отдельная карточка</b> с автогенерацией артикула JOTO и новыми баркодами.</p>
-
-      <div class="row" style="margin-top:12px">
-        <div class="field grow2">
-          <label class="label" for="cloneSearch">Поиск карточки-образца (артикул или название)</label>
-          <input id="cloneSearch" type="text" placeholder="например: худи — затем Enter" autocomplete="off">
-        </div>
-        <button class="btn" id="cloneLoadBtn" type="button"><span class="spin"></span><span class="lbl">Найти карточки</span></button>
-      </div>
-      <div class="picker" id="cloneList" style="margin-top:12px;display:none"></div>
-
-      <div id="cloneEditor" style="display:none;margin-top:16px;border-top:1.5px solid var(--line);padding-top:16px">
-        <div class="row">
-          <div class="field">
-            <label class="label" for="cloneCat">Категория JOTO (для артикула)</label>
-            <select id="cloneCat"><option value="">— выберите —</option></select>
-          </div>
-          <div class="field grow2">
-            <label class="label" for="cloneColors">Цвета (через запятую)</label>
-            <input id="cloneColors" type="text" placeholder="чёрный, белый, серый" autocomplete="off">
-          </div>
-        </div>
-
-        <div class="row" style="margin-top:12px">
-          <div class="field grow2"><label class="label" for="cloneTitle">Название</label><input id="cloneTitle" type="text" autocomplete="off"></div>
-          <div class="field"><label class="label" for="clonePrice">Цена, ₽</label><input id="clonePrice" type="number"></div>
-        </div>
-        <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink-2);margin-top:10px">
-          <input type="checkbox" id="cloneTitleColor" checked style="width:18px;height:18px;flex:none"> Добавлять цвет к названию (например «Худи чёрный»)
-        </label>
-
-        <div class="field" style="margin-top:12px"><label class="label" for="cloneDesc">Описание</label><textarea id="cloneDesc"></textarea></div>
-        <div class="field" style="margin-top:12px"><label class="label" for="cloneBrand">Бренд</label><input id="cloneBrand" type="text" autocomplete="off"></div>
-
-        <h2 style="margin-top:18px">Характеристики образца</h2>
-        <p class="note" style="margin-top:0">Скопированы из найденной карточки — можно поправить. Поле «Цвет» подставится автоматически для каждого цвета.</p>
-        <div class="charcs" id="cloneCharcs"></div>
-        <div class="note" id="cloneSizes" style="margin-top:12px"></div>
-
-        <button class="btn accent" id="cloneCreateBtn" type="button" style="margin-top:16px">
-          <span class="spin"></span><span class="lbl">Создать карточки в цветах на WB</span>
-        </button>
-        <div class="status" id="cloneStatus"></div>
-      </div>
     </div>
 
   </section>
@@ -953,6 +961,11 @@ async function fillCloneEditor(card){
   var price="";
   try{ price=((card.raw.sizes||[])[0]||{}).price; }catch(e){}
   $("clonePrice").value=(price!=null&&price!=="")?price:($("cPrice").value||"");
+  var dim=(card.raw&&card.raw.dimensions)||{};
+  $("cloneLen").value=dim.length!=null?dim.length:"";
+  $("cloneWid").value=dim.width!=null?dim.width:"";
+  $("cloneHei").value=dim.height!=null?dim.height:"";
+  $("cloneWei").value=(dim.weightBrutto!=null?dim.weightBrutto:(dim.weight!=null?dim.weight:""));
   var chs=card.characteristics||[];
   $("cloneCharcs").innerHTML=chs.map(function(c){
     return '<div class="field"><label class="label">'+esc(c.name||("#"+c.id))+'</label>'
@@ -1002,7 +1015,7 @@ $("cloneCreateBtn").addEventListener("click",async function(){
   var brand=$("cloneBrand").value.trim();
   var desc=$("cloneDesc").value;
   var baseSizes=(cloneBase.raw&&cloneBase.raw.sizes&&cloneBase.raw.sizes.length)?cloneBase.raw.sizes:[{techSize:"0",wbSize:"0"}];
-  var dims=(cloneBase.raw&&cloneBase.raw.dimensions)||{};
+  var dims={length:parseFloat($("cloneLen").value)||0,width:parseFloat($("cloneWid").value)||0,height:parseFloat($("cloneHei").value)||0,weightBrutto:parseFloat($("cloneWei").value)||0};
   var cc=collectCloneCharcs();
 
   spinOn($("cloneCreateBtn"),true,"Генерирую артикулы…");
