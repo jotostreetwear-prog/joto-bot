@@ -396,6 +396,55 @@ td textarea{min-height:40px}
       <div class="charcs" id="charcsBox"></div>
     </div>
 
+    <div class="block" id="cloneBlock" style="border-color:var(--accent)">
+      <h2>4 · Создать в разных цветах на основе действующей карточки</h2>
+      <p class="note" style="margin-top:0">Найдите готовую карточку-образец (например, действующую худи) — её характеристики, габариты и размеры
+        скопируются. Укажите цвета: для каждого создастся <b>отдельная карточка</b> с автогенерацией артикула JOTO и новыми баркодами.</p>
+
+      <div class="row" style="margin-top:12px">
+        <div class="field grow2">
+          <label class="label" for="cloneSearch">Поиск карточки-образца (артикул или название)</label>
+          <input id="cloneSearch" type="text" placeholder="например: худи — затем Enter" autocomplete="off">
+        </div>
+        <button class="btn" id="cloneLoadBtn" type="button"><span class="spin"></span><span class="lbl">Найти карточки</span></button>
+      </div>
+      <div class="picker" id="cloneList" style="margin-top:12px;display:none"></div>
+
+      <div id="cloneEditor" style="display:none;margin-top:16px;border-top:1.5px solid var(--line);padding-top:16px">
+        <div class="row">
+          <div class="field">
+            <label class="label" for="cloneCat">Категория JOTO (для артикула)</label>
+            <select id="cloneCat"><option value="">— выберите —</option></select>
+          </div>
+          <div class="field grow2">
+            <label class="label" for="cloneColors">Цвета (через запятую)</label>
+            <input id="cloneColors" type="text" placeholder="чёрный, белый, серый" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:12px">
+          <div class="field grow2"><label class="label" for="cloneTitle">Название</label><input id="cloneTitle" type="text" autocomplete="off"></div>
+          <div class="field"><label class="label" for="clonePrice">Цена, ₽</label><input id="clonePrice" type="number"></div>
+        </div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink-2);margin-top:10px">
+          <input type="checkbox" id="cloneTitleColor" checked style="width:18px;height:18px;flex:none"> Добавлять цвет к названию (например «Худи чёрный»)
+        </label>
+
+        <div class="field" style="margin-top:12px"><label class="label" for="cloneDesc">Описание</label><textarea id="cloneDesc"></textarea></div>
+        <div class="field" style="margin-top:12px"><label class="label" for="cloneBrand">Бренд</label><input id="cloneBrand" type="text" autocomplete="off"></div>
+
+        <h2 style="margin-top:18px">Характеристики образца</h2>
+        <p class="note" style="margin-top:0">Скопированы из найденной карточки — можно поправить. Поле «Цвет» подставится автоматически для каждого цвета.</p>
+        <div class="charcs" id="cloneCharcs"></div>
+        <div class="note" id="cloneSizes" style="margin-top:12px"></div>
+
+        <button class="btn accent" id="cloneCreateBtn" type="button" style="margin-top:16px">
+          <span class="spin"></span><span class="lbl">Создать карточки в цветах на WB</span>
+        </button>
+        <div class="status" id="cloneStatus"></div>
+      </div>
+    </div>
+
   </section>
 
   <!-- ============ ЧЕК-ЛИСТ (встроенное приложение) ============ -->
@@ -712,6 +761,10 @@ $("subjSearchBtn").addEventListener("click",async function(){
   spinOn($("subjSearchBtn"),false,"Найти");
   fit();
 });
+/* Enter в поле категории = искать */
+$("subjSearch").addEventListener("keydown",function(e){
+  if(e.key==="Enter"){ e.preventDefault(); $("subjSearchBtn").click(); }
+});
 $("createSubj").addEventListener("change",function(){
   $("charcsBlock").hidden=!$("createSubj").value;
   $("charcsBox").innerHTML="";
@@ -852,6 +905,146 @@ $("createFromFileBtn").addEventListener("click",async function(){
     else showStatus($("fileCreateStatus"),false,j.error||"Ошибка создания");
   }catch(e){ showStatus($("fileCreateStatus"),false,"Не удалось связаться с сервером"); }
   finally{ spinOn($("createFromFileBtn"),false,"Создать карточки из файла на WB"); fit(); }
+});
+
+
+/* ============================================================
+   СОЗДАНИЕ В РАЗНЫХ ЦВЕТАХ НА ОСНОВЕ ДЕЙСТВУЮЩЕЙ КАРТОЧКИ
+============================================================ */
+var CLONE_CARDS=[];     // найденные карточки-образцы
+var cloneBase=null;     // выбранный образец (с .raw и .characteristics)
+
+$("cloneLoadBtn").addEventListener("click",async function(){
+  spinOn($("cloneLoadBtn"),true,"Ищу…");
+  try{
+    var j=await api("/api/wb/cards?limit=500&search="+encodeURIComponent($("cloneSearch").value.trim()));
+    if(!j.ok){ showStatus($("cloneStatus"),false,"Ошибка WB: "+(j.error||"")); return; }
+    CLONE_CARDS=j.cards||[];
+    if(CLONE_CARDS.length===0){ $("cloneList").style.display="none"; showStatus($("cloneStatus"),false,"Карточки не найдены"); return; }
+    var html="";
+    CLONE_CARDS.forEach(function(c,i){
+      html+='<label class="pick-row"><input type="radio" name="clonePick" value="'+i+'">'
+        +'<span class="grow"><span class="pick-vc">'+esc(c.vendorCode||"—")+'</span>'
+        +'<span class="pick-meta">'+esc(c.title||"")+' · '+esc(c.subjectName||"")+' · размеров: '+((c.raw&&c.raw.sizes&&c.raw.sizes.length)||0)+'</span></span></label>';
+    });
+    $("cloneList").innerHTML=html; $("cloneList").style.display="";
+    $("cloneList").querySelectorAll('input[type=radio]').forEach(function(rb){
+      rb.addEventListener("change",function(){ fillCloneEditor(CLONE_CARDS[parseInt(rb.value,10)]); });
+    });
+    $("cloneStatus").className="status";
+  }catch(e){ showStatus($("cloneStatus"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("cloneLoadBtn"),false,"Найти карточки"); fit(); }
+});
+$("cloneSearch").addEventListener("keydown",function(e){
+  if(e.key==="Enter"){ e.preventDefault(); $("cloneLoadBtn").click(); }
+});
+
+function cloneCharcValue(v){
+  if(Array.isArray(v)) return v.join(", ");
+  if(v==null) return "";
+  if(typeof v==="object") return "";
+  return String(v);
+}
+async function fillCloneEditor(card){
+  cloneBase=card;
+  $("cloneTitle").value=card.title||"";
+  $("cloneDesc").value=card.description||"";
+  $("cloneBrand").value=card.brand||"JOTO";
+  var price="";
+  try{ price=((card.raw.sizes||[])[0]||{}).price; }catch(e){}
+  $("clonePrice").value=(price!=null&&price!=="")?price:($("cPrice").value||"");
+  var chs=card.characteristics||[];
+  $("cloneCharcs").innerHTML=chs.map(function(c){
+    return '<div class="field"><label class="label">'+esc(c.name||("#"+c.id))+'</label>'
+      +'<input type="text" data-cid="'+c.id+'" data-cname="'+esc((c.name||"").toLowerCase())+'" value="'+esc(cloneCharcValue(c.value))+'" autocomplete="off"></div>';
+  }).join("") || '<div class="muted">У образца нет заполненных характеристик</div>';
+  var sizes=(card.raw&&card.raw.sizes)||[];
+  $("cloneSizes").innerHTML="Размеры образца ("+sizes.length+"): "+esc(sizes.map(function(s){return s.techSize||s.wbSize||"б/р";}).join(", ")||"безразмерный")
+    +". Баркоды для новых карточек сгенерируются автоматически.";
+  try{
+    var jc=await api("/api/categories");
+    if(jc&&jc.ok&&jc.categories){
+      var subj=(card.subjectName||"").toLowerCase();
+      var match="";
+      var html='<option value="">— выберите —</option>';
+      jc.categories.forEach(function(cat){
+        html+='<option value="'+esc(cat.value)+'">'+esc(cat.title)+' — '+esc(cat.code)+'</option>';
+        if(!match&&subj&&(subj.indexOf(cat.value)>=0||cat.value.indexOf(subj)>=0)) match=cat.value;
+      });
+      $("cloneCat").innerHTML=html;
+      if(match) $("cloneCat").value=match;
+    }
+  }catch(e){}
+  $("cloneEditor").style.display="";
+  fit();
+}
+
+function collectCloneCharcs(){
+  var out=[], colorId=null;
+  $("cloneCharcs").querySelectorAll("input[data-cid]").forEach(function(inp){
+    var id=parseInt(inp.dataset.cid,10);
+    if((inp.dataset.cname||"").indexOf("цвет")>=0) colorId=id;
+    var v=inp.value.trim(); if(!v) return;
+    out.push({ id:id, value:v.split(",").map(function(s){return s.trim();}).filter(Boolean) });
+  });
+  return { charcs:out, colorId:colorId };
+}
+
+$("cloneCreateBtn").addEventListener("click",async function(){
+  if(!cloneBase){ showStatus($("cloneStatus"),false,"Сначала выберите карточку-образец"); return; }
+  var cat=$("cloneCat").value;
+  if(!cat){ showStatus($("cloneStatus"),false,"Выберите категорию JOTO для артикула"); return; }
+  var colors=$("cloneColors").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+  if(colors.length===0){ showStatus($("cloneStatus"),false,"Укажите хотя бы один цвет"); return; }
+  var price=parseFloat($("clonePrice").value)||0;
+  var addColor=$("cloneTitleColor").checked;
+  var titleBase=$("cloneTitle").value.trim();
+  var brand=$("cloneBrand").value.trim();
+  var desc=$("cloneDesc").value;
+  var baseSizes=(cloneBase.raw&&cloneBase.raw.sizes&&cloneBase.raw.sizes.length)?cloneBase.raw.sizes:[{techSize:"0",wbSize:"0"}];
+  var dims=(cloneBase.raw&&cloneBase.raw.dimensions)||{};
+  var cc=collectCloneCharcs();
+
+  spinOn($("cloneCreateBtn"),true,"Генерирую артикулы…");
+  try{
+    var ja=await api("/api/article/batch",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({category:cat,colors:colors})});
+    if(!ja.ok){ showStatus($("cloneStatus"),false,"Артикул: "+(ja.error||"ошибка")); return; }
+
+    spinOn($("cloneCreateBtn"),true,"Готовлю баркоды…");
+    var items=[];
+    for(var k=0;k<ja.articles.length;k++){
+      var color=ja.articles[k].color, article=ja.articles[k].article;
+      var jb=await api("/api/wb/barcodes",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({count:baseSizes.length})});
+      var bcs=(jb&&jb.ok&&jb.barcodes)?jb.barcodes:[];
+      var chs=cc.charcs.map(function(o){return {id:o.id,value:o.value.slice()};});
+      if(cc.colorId!=null){
+        var found=false;
+        chs.forEach(function(o){ if(o.id===cc.colorId){ o.value=[color]; found=true; } });
+        if(!found) chs.push({id:cc.colorId,value:[color]});
+      }
+      var sizes=baseSizes.map(function(s,si){
+        var sz=String(s.techSize||s.wbSize||"0");
+        return { techSize:sz, wbSize:sz, price:price, skus: bcs[si]?[bcs[si]]:[] };
+      });
+      items.push({ subjectID:cloneBase.subjectID, variants:[{
+        brand:brand, title:(addColor&&titleBase)?(titleBase+" "+color):titleBase,
+        description:desc, vendorCode:article, dimensions:dims, characteristics:chs, sizes:sizes
+      }]});
+    }
+
+    spinOn($("cloneCreateBtn"),true,"Создаю на WB…");
+    var j=await api("/api/wb/create",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({items:items})});
+    if(j.ok){
+      var arts=ja.articles.map(function(a){return a.article;}).join(", ");
+      showStatus($("cloneStatus"),true,"Отправлено на создание: "+j.created+" карточк(и) — "+arts+". Проверьте статус в кабинете WB через 1–2 минуты.");
+    } else {
+      showStatus($("cloneStatus"),false,j.error||"Ошибка создания");
+    }
+  }catch(e){ showStatus($("cloneStatus"),false,"Не удалось связаться с сервером"); }
+  finally{ spinOn($("cloneCreateBtn"),false,"Создать карточки в цветах на WB"); fit(); }
 });
 
 

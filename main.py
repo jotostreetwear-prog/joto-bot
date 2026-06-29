@@ -1159,6 +1159,30 @@ def api_article():
         "model_number": model_number,
     })
 
+@app.route("/api/article/batch", methods=["POST"])
+def api_article_batch():
+    """Артикулы для нескольких цветов одной модели: резервируем ОДИН номер
+    модели и навешиваем цвет суффиксом → J{code}{model}/{цвет} для каждого цвета.
+    Используется при создании карточек «в разных цветах» на основе образца."""
+    data = request.get_json(silent=True) or {}
+    category = (data.get("category", "") or "").strip().lower()
+    colors = data.get("colors") or []
+    code = resolve_category_code(category)
+    if not code:
+        return jsonify({"ok": False, "error": "Неизвестная категория JOTO"}), 400
+    seen, norm = set(), []
+    for col in colors:
+        c = str(col or "").strip().lower().replace(" ", "")
+        if c and c not in seen:
+            seen.add(c)
+            norm.append(c)
+    if not norm:
+        return jsonify({"ok": False, "error": "Укажите хотя бы один цвет"}), 400
+    model_number = reserve_next_number(code)  # один номер модели на все цвета
+    articles = [{"color": c, "article": f"J{code}{model_number}/{c}"} for c in norm]
+    return jsonify({"ok": True, "category_code": code,
+                    "model_number": model_number, "articles": articles})
+
 # ===================== WB CONTENT API: МАССОВЫЕ КАРТОЧКИ =====================
 # Создание и редактирование карточек товаров на Wildberries.
 # Требуется WB_API_TOKEN с доступом к категории «Контент».
@@ -1267,7 +1291,26 @@ def wb_search_subjects(name="", limit=200):
     if name:
         params["name"] = name
     data = wb_content_request("GET", "/content/v2/object/all", params=params)
-    return data.get("data", []) or []
+    subjects = data.get("data", []) or []
+    # WB-фильтр по name капризный (регистр/частичное совпадение) и иногда
+    # возвращает пусто даже для существующей категории. Подстрахуемся:
+    # грузим каталог постранично и фильтруем по подстроке сами.
+    if name and not subjects:
+        q = name.strip().lower()
+        found = []
+        offset = 0
+        for _ in range(12):  # каталог WB ~8–9k предметов → до 12k хватает
+            d = wb_content_request("GET", "/content/v2/object/all",
+                                   params={"locale": "ru", "limit": 1000, "offset": offset})
+            batch = d.get("data", []) or []
+            if not batch:
+                break
+            found.extend([s for s in batch if q in (s.get("subjectName") or "").lower()])
+            if len(batch) < 1000:
+                break
+            offset += 1000
+        subjects = found
+    return subjects
 
 def wb_subject_charcs(subject_id):
     data = wb_content_request("GET", f"/content/v2/object/charcs/{subject_id}", params={"locale": "ru"})
