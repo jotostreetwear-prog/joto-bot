@@ -1577,6 +1577,25 @@ def api_wb_cards():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
 
+@app.route("/api/wb/brand-subjects", methods=["GET"])
+def api_wb_brand_subjects():
+    """Категории, в которых у бренда (нашего кабинета JOTO) уже есть карточки.
+    Нужно, чтобы при создании подсветить категорию, которой у нас ещё нет."""
+    try:
+        cards = wb_fetch_cards(text_search="", limit=100, max_cards=2000)
+        seen = {}
+        for c in cards:
+            sid = c.get("subjectID")
+            if sid is None:
+                continue
+            if sid not in seen:
+                seen[sid] = c.get("subjectName") or ""
+        subjects = [{"subjectID": sid, "subjectName": nm} for sid, nm in seen.items()]
+        subjects.sort(key=lambda s: (s["subjectName"] or "").lower())
+        return jsonify({"ok": True, "count": len(subjects), "subjects": subjects})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
 def _norm_txt(s):
     return (s or "").lower().replace("ё", "е")
 
