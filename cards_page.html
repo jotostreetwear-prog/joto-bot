@@ -566,7 +566,8 @@ td textarea{min-height:40px}
   <section class="panel" id="panel-novelty" hidden>
     <div class="block">
       <h2>Чек-лист запуска новинки на Wildberries</h2>
-      <p class="note" style="margin-top:0">По каждому артикулу-новинке — все этапы запуска по регламенту с галочками. Отметки общие для всех менеджеров и сохраняются (видно, кто и когда отметил).</p>
+      <p class="note" style="margin-top:0">По каждому артикулу-новинке — все этапы запуска по регламенту с галочками. Отметки общие для всех менеджеров и сохраняются (видно, кто и когда отметил).
+        Статус проставляется <b>автоматически по прогрессу</b>: 🆕 Новая → 🛠 В работе → ✅ Готова к запуску (все пункты). Статусы 🚀 Запущена и 📈 Масштабируется ставятся вручную и авто их не меняет.</p>
       <div class="row" style="margin-top:12px;align-items:flex-end">
         <div class="field"><label class="label" for="novArt">Артикул новинки</label><input id="novArt" type="text" placeholder="например: J09017" autocomplete="off"></div>
         <div class="field grow2"><label class="label" for="novTitle">Название (необязательно)</label><input id="novTitle" type="text" placeholder="например: Худи оверсайз" autocomplete="off"></div>
@@ -1701,6 +1702,24 @@ NOVELTY_STAGES.forEach(function(st){
 function novStatusOptions(sel){ return NOV_STATUSES.map(function(s){ return '<option value="'+s.v+'"'+(s.v===sel?' selected':'')+'>'+s.label+'</option>'; }).join(""); }
 function novItemByArt(art){ var r=null; (NOV_DATA.items||[]).forEach(function(it){ if(it.article===art) r=it; }); return r; }
 function novProgress(art){ var c=NOV_DATA.checks[art]||{}; return novAllKeys().filter(function(k){return c[k]&&c[k].checked;}).length; }
+/* Авто-статус по прогрессу чек-листа: new → work → ready.
+   «Запущена»/«Масштабируется» ставятся вручную и авто их не трогает. */
+var NOV_AUTO_TIER={"new":1,"work":1,"ready":1,"":1};
+function novAutoStatus(art){
+  var total=novAllKeys().length, done=novProgress(art);
+  if(total>0 && done>=total) return "ready";
+  if(done>0) return "work";
+  return "new";
+}
+function novReconcileStatus(art, persist){
+  var o=novItemByArt(art); if(!o) return false;
+  if(!NOV_AUTO_TIER[o.status||"new"]) return false; // launched/scaled — не трогаем
+  var auto=novAutoStatus(art);
+  if((o.status||"new")===auto) return false;
+  o.status=auto;
+  if(persist){ api("/api/novelty/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({article:art,status:auto,by:(CURRENT_USER||"авто")})}).catch(function(){}); }
+  return true;
+}
 function novOverdue(o,done,total){
   if(!o||!o.launch_date||done>=total) return false;
   try{ var t=new Date(); t.setHours(0,0,0,0); return new Date(o.launch_date)<t; }catch(e){ return false; }
@@ -1718,6 +1737,7 @@ function novVisibleItems(){
 }
 function renderNovelty(){
   if(!NOV_DATA){ return; }
+  (NOV_DATA.items||[]).forEach(function(o){ novReconcileStatus(o.article, true); }); // авто-статус по прогрессу
   var total=(NOV_DATA.items||[]).length, all=novAllKeys();
   if(!total){ $("novList").innerHTML='<div class="block"><div class="muted">Пока нет новинок. Добавьте артикул выше — по нему появится чек-лист запуска. Новые артикулы из вкладки «Генерация» добавляются сюда автоматически.</div></div>'; fit(); return; }
   var items=novVisibleItems();
@@ -1834,6 +1854,10 @@ function novToggle(cb){
     else if(meta){ meta.remove(); }
   }
   var card=cb.closest(".nov-card"); if(card) novUpdateProgress(card,art);
+  if(novReconcileStatus(art,true) && card){ // авто-статус мог измениться
+    var sel=card.querySelector(".nov-status-sel"), o=novItemByArt(art);
+    if(sel&&o){ sel.value=o.status; sel.dataset.s=o.status; }
+  }
   api("/api/novelty/check",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({article:art,key:key,checked:on,by:CURRENT_USER})})
     .then(function(j){ if(!j||!j.ok) showStatus($("novStatus"),false,"Отметку не удалось сохранить — обновите страницу"); })
     .catch(function(){ showStatus($("novStatus"),false,"Нет связи с сервером — отметка не сохранена"); });
