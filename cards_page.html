@@ -305,7 +305,15 @@ td textarea{min-height:40px}
 
       <div class="field" style="margin-top:14px">
         <label class="label" for="artColor">Цвет</label>
-        <input id="artColor" type="text" placeholder="чёрный" autocomplete="off">
+        <input id="artColor" type="text" list="artColorList" placeholder="выберите или впишите цвет" autocomplete="off">
+        <datalist id="artColorList">
+          <option value="чёрный"><option value="белый"><option value="серый"><option value="бежевый"><option value="молочный">
+          <option value="синий"><option value="голубой"><option value="зелёный"><option value="хаки"><option value="красный">
+          <option value="бордовый"><option value="розовый"><option value="жёлтый"><option value="коричневый"><option value="графит">
+        </datalist>
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink-2);margin-top:10px">
+          <input type="checkbox" id="artNoColor" style="width:18px;height:18px;flex:none"> Без цвета (артикул без суффикса цвета)
+        </label>
       </div>
       <button class="btn accent" id="artCreateBtn" type="button" style="margin-top:18px;width:100%">
         <span class="spin"></span><span class="lbl">Создать артикул</span>
@@ -1427,18 +1435,23 @@ $("artDelCatBtn").addEventListener("click",async function(){
   $("artDelCatBtn").disabled=false; fit();
 });
 var LAST_ART=null; // последний созданный артикул — для кнопки «Удалить»
+$("artNoColor").addEventListener("change",function(){
+  var off=this.checked; $("artColor").disabled=off; if(off) $("artColor").value="";
+  $("artColor").style.opacity=off?".5":"";
+});
 $("artCreateBtn").addEventListener("click",async function(){
   var v=$("artCategory").value;
   if(!v||v==="__new__"){ showStatus($("artStatus"),false,"Выберите категорию"); return; }
-  var color=$("artColor").value.trim();
-  if(!color){ showStatus($("artStatus"),false,"Укажите цвет"); return; }
+  var noColor=$("artNoColor").checked;
+  var color=noColor?"":$("artColor").value.trim();
+  if(!noColor && !color){ showStatus($("artStatus"),false,"Укажите цвет или отметьте «Без цвета»"); return; }
   spinOn($("artCreateBtn"),true,"Создаю…");
   try{
     var j=await api("/api/article",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({category:v,color:color})});
     if(j&&j.ok){
       $("artStatus").className="status";
       $("artCode").textContent=j.article;
-      $("artMeta").textContent=(j.category_title||"")+" · "+(j.color||"")+" · модель "+(j.model_number||"");
+      $("artMeta").textContent=(j.category_title||"")+(j.color?(" · "+j.color):"")+" · модель "+(j.model_number||"");
       $("artResult").style.display="block";
       LAST_ART={category:j.category, code:j.category_code, model_number:j.model_number, article:j.article};
       $("artUndoStatus").className="status"; $("artUndoStatus").textContent="";

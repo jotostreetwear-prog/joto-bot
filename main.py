@@ -1360,10 +1360,9 @@ def api_article():
     code = resolve_category_code(category)
     if not code:
         return jsonify({"ok": False, "error": "Неизвестная категория"}), 400
-    if not color:
-        return jsonify({"ok": False, "error": "Укажите цвет"}), 400
     model_number = reserve_next_number(code)
-    article = f"J{code}{model_number}/{color}"
+    # цвет необязателен: без цвета артикул без суффикса (J{code}{model})
+    article = f"J{code}{model_number}/{color}" if color else f"J{code}{model_number}"
     return jsonify({
         "ok": True,
         "article": article,
