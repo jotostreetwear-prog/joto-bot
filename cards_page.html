@@ -476,7 +476,19 @@ td textarea{min-height:40px}
         </div>
         <div class="status" id="nkFileResult"></div>
         <div id="filePreview" style="margin-top:12px"></div>
-        <button class="btn accent" id="createFromFileBtn" type="button" style="margin-top:12px;display:none">
+
+        <div id="glueBlock" style="display:none;margin-top:16px;border-top:1.5px solid var(--line);padding-top:14px">
+          <div class="label">Склейка цветов (объединить в одну карточку)</div>
+          <p class="note" style="margin-top:4px">Артикулы с <b>одинаковым номером склейки</b> объединятся в ОДНУ карточку WB как разные цвета одной модели. Пусто = отдельная карточка.</p>
+          <div class="row" style="margin-top:8px">
+            <button class="btn secondary sm" id="glueAllBtn" type="button">Склеить все в одну</button>
+            <button class="btn secondary sm" id="glueNoneBtn" type="button">Разделить (каждый отдельно)</button>
+          </div>
+          <div id="glueList" style="margin-top:10px"></div>
+          <div class="note" id="glueSummary" style="margin-top:6px"></div>
+        </div>
+
+        <button class="btn accent" id="createFromFileBtn" type="button" style="margin-top:14px;display:none">
           <span class="spin"></span><span class="lbl">Создать карточки из файла на WB</span>
         </button>
         <div class="status" id="fileCreateStatus"></div>
@@ -1202,6 +1214,39 @@ function renderFilePreview(){
     inp.addEventListener("input",function(){ var g=FILE_GROUPS[inp.dataset.art]; if(g) g[inp.dataset.field]=inp.value; });
   });
   $("createFromFileBtn").style.display="";
+  renderGlue();
+}
+/* Склейка: артикулы с одинаковым номером объединяются в одну карточку (цвета) */
+function fileGlueGroups(){
+  var groups={};
+  Object.keys(FILE_GROUPS||{}).forEach(function(a){
+    var glue=((FILE_GROUPS[a].glue||"")+"").trim();
+    var key=glue?("g:"+glue.toLowerCase()):("a:"+a);
+    (groups[key]=groups[key]||[]).push(a);
+  });
+  return groups;
+}
+function updateGlueSummary(){
+  var groups=fileGlueGroups();
+  var cards=Object.keys(groups).length;
+  var glued=Object.keys(groups).filter(function(k){return groups[k].length>1;}).length;
+  $("glueSummary").textContent="Будет создано карточек: "+cards+(glued?(" · из них склеек: "+glued):"");
+}
+function renderGlue(){
+  var arts=FILE_GROUPS?Object.keys(FILE_GROUPS):[];
+  if(!arts.length){ $("glueBlock").style.display="none"; return; }
+  $("glueBlock").style.display="";
+  $("glueList").innerHTML=arts.map(function(a){
+    var g=FILE_GROUPS[a];
+    return '<div class="row" style="align-items:center;gap:10px;margin-bottom:6px">'
+      +'<span class="pick-vc" style="min-width:110px">'+esc(a)+'</span>'
+      +'<span class="muted" style="flex:1;min-width:120px">'+esc(g.color||"")+(g.title?(" · "+esc(g.title)):"")+'</span>'
+      +'<input type="text" class="glue-inp" data-art="'+esc(a)+'" value="'+esc(g.glue||"")+'" placeholder="склейка №" style="width:120px" autocomplete="off"></div>';
+  }).join("");
+  $("glueList").querySelectorAll(".glue-inp").forEach(function(inp){
+    inp.addEventListener("input",function(){ var g=FILE_GROUPS[inp.dataset.art]; if(g) g.glue=inp.value; updateGlueSummary(); });
+  });
+  updateGlueSummary();
 }
 function applyNkRows(j){
   FILE_GROUPS={};
@@ -1243,12 +1288,15 @@ $("nkClearBtn").addEventListener("click",function(){
   $("filePreview").innerHTML="";
   $("createFromFileBtn").style.display="none";
   $("nkClearBtn").style.display="none";
+  $("glueBlock").style.display="none";
   $("nkFileResult").className="status";
   $("nkFileResult").textContent="";
   $("fileCreateStatus").className="status";
   $("fileCreateStatus").textContent="";
   fit();
 });
+$("glueAllBtn").addEventListener("click",function(){ if(!FILE_GROUPS) return; Object.keys(FILE_GROUPS).forEach(function(a){ FILE_GROUPS[a].glue="1"; }); renderGlue(); fit(); });
+$("glueNoneBtn").addEventListener("click",function(){ if(!FILE_GROUPS) return; Object.keys(FILE_GROUPS).forEach(function(a){ FILE_GROUPS[a].glue=""; }); renderGlue(); fit(); });
 
 $("createFromFileBtn").addEventListener("click",async function(){
   if(!FILE_GROUPS||Object.keys(FILE_GROUPS).length===0){ showStatus($("fileCreateStatus"),false,"Сначала загрузите файл"); return; }
@@ -1277,7 +1325,8 @@ $("createFromFileBtn").addEventListener("click",async function(){
   var baseCh={};
   collectSampleCharcs().forEach(function(o){ if(o.id!=null && o.value && o.value.length) baseCh[o.id]=o.value; });
   var baseDesc=($("smplDesc").value||"").trim();
-  var items=Object.keys(FILE_GROUPS).map(function(a){
+  // вариант (цвет/номенклатура) одного артикула из файла
+  function buildVariant(a){
     var g=FILE_GROUPS[a];
     var chMap={}; for(var k in baseCh) chMap[k]=baseCh[k].slice();   // из образца
     if(compId&&g.composition) chMap[compId]=[String(g.composition)]; // из файла ЧЗ
@@ -1288,14 +1337,19 @@ $("createFromFileBtn").addEventListener("click",async function(){
     if(tnvedId&&g.tnved) chMap[tnvedId]=[String(g.tnved)];
     manualCharcs.forEach(function(o){ if(o.id!=null&&o.value&&o.value.length) chMap[o.id]=o.value; }); // доп.
     var ch=Object.keys(chMap).map(function(id){ return {id:parseInt(id,10), value:chMap[id]}; });
-    return { subjectID:sid, variants:[{
+    return {
       brand:brand, title:g.title||a, description:baseDesc||g.title||"", vendorCode:a,
       dimensions:dims, characteristics:ch,
       sizes: g.sizes.map(function(s){
         var sz=String(s.size||"0");
         return { techSize:sz, wbSize:sz, price:price, skus: s.gtin?[s.gtin]:[] };
       })
-    }]};
+    };
+  }
+  // склейка: артикулы с одинаковым номером — варианты ОДНОЙ карточки (один элемент с несколькими variants)
+  var glueGroups=fileGlueGroups();
+  var items=Object.keys(glueGroups).map(function(key){
+    return { subjectID:sid, variants: glueGroups[key].map(buildVariant) };
   });
   spinOn($("createFromFileBtn"),true,"Создаю на WB…");
   try{
