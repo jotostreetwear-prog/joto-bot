@@ -1315,6 +1315,43 @@ def api_article():
         "model_number": model_number,
     })
 
+@app.route("/api/article/undo", methods=["POST"])
+def api_article_undo():
+    """Освободить последний созданный номер модели (если менеджер создал артикул
+    по ошибке). Безопасно работает только для самого последнего номера категории —
+    откатывает счётчик на 1, чтобы номер выдался снова. Также убирает случайную
+    новинку из чек-листа."""
+    data = request.get_json(silent=True) or {}
+    category = (data.get("category", "") or "").strip().lower()
+    article = (data.get("article") or "").strip()
+    code = resolve_category_code(category) or (data.get("category_code") or "").strip()
+    model_raw = str(data.get("model_number") or "").strip()
+    # Если явных кода/номера нет — разбираем из строки артикула (напр. «J09020» или «09020/чёрный»)
+    if (not code or not model_raw) and article:
+        m = re.search(r"J?(\d{2})(\d{3})", article, re.IGNORECASE)
+        if m:
+            code = code or m.group(1)
+            model_raw = model_raw or m.group(2)
+    if not code:
+        return jsonify({"ok": False, "error": "Неизвестная категория"}), 400
+    try:
+        mn = int(model_raw.lstrip("0") or "0")
+    except Exception:
+        return jsonify({"ok": False, "error": "Неверный номер модели"}), 400
+    if mn <= 0:
+        return jsonify({"ok": False, "error": "Неверный номер модели"}), 400
+    cur = get_current_counter(code)
+    if cur != mn:
+        return jsonify({"ok": False, "error": "Освободить можно только последний созданный артикул "
+                        "(после него уже создавались другие номера)."}), 409
+    if mn in get_used_numbers(code):
+        return jsonify({"ok": False, "error": "Этот номер уже используется в карточке на WB — освобождать нельзя."}), 409
+    set_counter(code, mn - 1)
+    article = (data.get("article") or "").strip()
+    if article:
+        db_novelty_remove(article)
+    return jsonify({"ok": True, "freed": str(mn).zfill(3)})
+
 @app.route("/api/article/batch", methods=["POST"])
 def api_article_batch():
     """Артикулы для нескольких цветов одной модели: резервируем ОДИН номер

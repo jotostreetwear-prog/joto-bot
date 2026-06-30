@@ -299,7 +299,22 @@ td textarea{min-height:40px}
         <div style="font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-2);font-weight:700">● Артикул создан</div>
         <div id="artCode" style="font-family:var(--mono);font-weight:600;font-size:34px;margin:12px 0 6px;word-break:break-all"></div>
         <div class="muted" id="artMeta"></div>
-        <button class="btn accent" id="artCopyBtn" type="button" style="margin-top:14px;width:auto;padding:11px 18px">Скопировать артикул</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
+          <button class="btn accent" id="artCopyBtn" type="button" style="width:auto;padding:11px 18px">Скопировать артикул</button>
+          <button class="btn secondary" id="artUndoBtn" type="button" style="width:auto;padding:11px 18px;border-color:#e0483a;color:#e0483a">🗑 Удалить артикул</button>
+        </div>
+        <p class="note" id="artUndoNote" style="margin-top:8px">Создали по ошибке? «Удалить артикул» освободит этот номер — он выдастся снова. Освободить можно только последний созданный номер.</p>
+        <div class="status" id="artUndoStatus"></div>
+      </div>
+
+      <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+        <label class="label" for="artDelNum">Удалить артикул по номеру (освободить номер)</label>
+        <div class="row" style="margin-top:6px">
+          <div class="field grow2"><input id="artDelNum" type="text" placeholder="например: J09020 или 09020" autocomplete="off"></div>
+          <button class="btn secondary" id="artDelNumBtn" type="button" style="border-color:#e0483a;color:#e0483a"><span class="spin"></span><span class="lbl">🗑 Удалить</span></button>
+        </div>
+        <p class="note" style="margin-top:6px">Если менеджер создал артикул по ошибке — впишите номер, и он освободится (выдастся снова). Сработает только для последнего созданного номера в категории.</p>
+        <div class="status" id="artDelNumStatus"></div>
       </div>
     </div>
   </section>
@@ -1389,6 +1404,7 @@ $("artDelCatBtn").addEventListener("click",async function(){
   }catch(e){ showStatus($("artStatus"),false,"Не удалось связаться с сервером"); }
   $("artDelCatBtn").disabled=false; fit();
 });
+var LAST_ART=null; // последний созданный артикул — для кнопки «Удалить»
 $("artCreateBtn").addEventListener("click",async function(){
   var v=$("artCategory").value;
   if(!v||v==="__new__"){ showStatus($("artStatus"),false,"Выберите категорию"); return; }
@@ -1402,6 +1418,9 @@ $("artCreateBtn").addEventListener("click",async function(){
       $("artCode").textContent=j.article;
       $("artMeta").textContent=(j.category_title||"")+" · "+(j.color||"")+" · модель "+(j.model_number||"");
       $("artResult").style.display="block";
+      LAST_ART={category:j.category, code:j.category_code, model_number:j.model_number, article:j.article};
+      $("artUndoStatus").className="status"; $("artUndoStatus").textContent="";
+      $("artUndoBtn").dataset.armed="0"; $("artUndoBtn").innerHTML="🗑 Удалить артикул"; $("artUndoBtn").disabled=false;
       artRefreshHint();
       bxCreateChzTask(j.article,(j.category_title||"")+" · "+(j.color||"")); // задача Дарье на ЧЗ
       // новинка автоматически попадает в чек-лист запуска
@@ -1415,6 +1434,34 @@ $("artCopyBtn").addEventListener("click",function(){
   var t=$("artCode").textContent;
   try{ if(navigator.clipboard) navigator.clipboard.writeText(t); $("artCopyBtn").textContent="Скопировано ✓"; setTimeout(function(){$("artCopyBtn").textContent="Скопировать артикул";},1500); }catch(e){}
 });
+/* Удаление артикула (освобождение номера) */
+async function articleUndo(payload, statusEl){
+  try{
+    var j=await api("/api/article/undo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    if(j&&j.ok){ showStatus(statusEl,true,"Артикул удалён, номер "+(j.freed||"")+" освобождён — выдастся снова."); return true; }
+    showStatus(statusEl,false,(j&&j.error)||"Не удалось удалить артикул"); return false;
+  }catch(e){ showStatus(statusEl,false,"Нет связи с сервером"); return false; }
+}
+$("artUndoBtn").addEventListener("click",async function(){
+  if(!LAST_ART) return;
+  var b=this;
+  if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Точно удалить?";
+    setTimeout(function(){ if(b.dataset.armed==="1"){ b.dataset.armed="0"; b.textContent="🗑 Удалить артикул"; } },3000); return; }
+  b.dataset.armed="0"; b.disabled=true;
+  var ok=await articleUndo({category:LAST_ART.category, category_code:LAST_ART.code, model_number:LAST_ART.model_number, article:LAST_ART.article}, $("artUndoStatus"));
+  if(ok){ $("artResult").style.display="none"; LAST_ART=null; artRefreshHint(); if(NOV_DATA!==null) loadNovelty(); }
+  else { b.disabled=false; b.textContent="🗑 Удалить артикул"; }
+  fit();
+});
+$("artDelNumBtn").addEventListener("click",async function(){
+  var val=$("artDelNum").value.trim();
+  if(!val){ showStatus($("artDelNumStatus"),false,"Введите номер артикула"); return; }
+  spinOn($("artDelNumBtn"),true,"Удаляю…");
+  var ok=await articleUndo({article:val}, $("artDelNumStatus"));
+  if(ok){ $("artDelNum").value=""; artRefreshHint(); if(NOV_DATA!==null) loadNovelty(); }
+  spinOn($("artDelNumBtn"),false,"🗑 Удалить"); fit();
+});
+$("artDelNum").addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); $("artDelNumBtn").click(); } });
 artLoadCategories();
 
 /* ============================================================
