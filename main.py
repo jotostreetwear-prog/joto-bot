@@ -93,8 +93,9 @@ try:
     KEEP_ONLINE_EVERY_MIN = max(1, int(os.environ.get("KEEP_ONLINE_EVERY_MIN", "1") or 1))
 except Exception:
     KEEP_ONLINE_EVERY_MIN = 1
-# Необязательное окно активности в часах МСК (например "9-21"). Пусто = круглосуточно.
-KEEP_ONLINE_HOURS = os.environ.get("KEEP_ONLINE_HOURS", "").strip()
+# Окно активности в часах МСК. По умолчанию рабочее время 9-18.
+# Пусто = круглосуточно.
+KEEP_ONLINE_HOURS = os.environ.get("KEEP_ONLINE_HOURS", "9-18").strip()
 
 def is_silent_dialog(dialog_id):
     """Чаты только для отчётов/алертов: бот туда пишет сам, но не приветствует
