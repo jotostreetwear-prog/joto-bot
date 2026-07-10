@@ -1,211 +1,376 @@
 /* =========================================================================
-   IndexoWB — единая дизайн-система интерфейса (Направление 1, светлая тема).
+   JOTO UI — дизайн-система в стиле Supabase Dashboard (светлая тема).
    Источник истины. Компоненты ссылаются ТОЛЬКО на токены (--*).
    Подключается одним <link> на всех страницах ПЕРЕД их собственным <style>.
 
-   Файл делает две вещи:
-   1) Задаёт токены IndexoWB и компоненты .iw-* (для новой и будущей разметки).
+   Опорная спецификация: реверс-инжиниринг supabase.com/dashboard (10.07.2026):
+   - Шрифты: Inter (тело, вес ~450), Manrope (заголовки, 600, letter-spacing −).
+   - Палитра: почти монохром + единственный акцент — зелёный #3FCF8E
+     (hover #097C4F, светлый #72E3AD). Границы ~8% чёрного.
+   - Радиусы: sm 4px / базовый 6px / lg 8px / pill.
+   - Переходы: 200ms cubic-bezier(0,0,.2,1) (ease-out).
+   - Каркас: верхняя панель ~46px + левый икон-рейл 48px,
+     разворачивающийся при наведении (см. /static/shell.js).
+
+   Файл делает три вещи:
+   1) Задаёт токены и компоненты .iw-* (для новой и будущей разметки).
    2) «Мост совместимости» (LEGACY BRIDGE) — переопределяет старые токены
       существующих страниц (--bg/--surface/--ink/--accent/--line/--ok…) на
-      палитру IndexoWB через !important. Важность побеждает специфичность,
+      палитру Supabase через !important. Важность побеждает специфичность,
       поэтому это перекрывает блоки [data-theme="light|dark"] страниц и заодно
-      нейтрализует тёмную тему (везде показывается светлая).
+      нейтрализует тёмную тему (везде показывается светлая, как в спецификации).
+   3) Стилизует общий каркас (top bar + icon rail), который внедряет shell.js.
    ========================================================================= */
 
-/* Шрифты — самостоятельно размещены в /static/fonts (без внешних CDN).
-   WB Hauss VF — коммерческий шрифт Wildberries; распространять его файл нельзя,
-   а его CDN недоступен из этого окружения. Поэтому интерфейс использует Inter
-   (штатный fallback дизайн-системы, OFL), таблицы — Lato (OFL). Если появится
-   лицензионный файл WB Hauss — положить его в /static/fonts и добавить @font-face
-   'WB Hauss VF' (он первым в стеке --iw-sans и подхватится автоматически). */
+/* Шрифты — самостоятельно размещены в /static/fonts (без внешних CDN):
+   Inter (тело), Manrope (заголовки), Lato (наследие таблиц). */
 @import url('/static/fonts/fonts.css');
 
 :root{
   /* ---- Типографика ---- */
-  --iw-sans:'WB Hauss VF', Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-  --wbt-table-font:'Lato', arial, sans-serif;
+  --iw-sans:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --iw-heading:Manrope, var(--iw-sans);
   --iw-mono:ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --wbt-table-font:var(--iw-sans);
+
+  /* ---- Бренд (зелёный Supabase) ---- */
+  --brand:#3FCF8E;
+  --brand-dark:#097C4F;
+  --brand-light:#72E3AD;
+  --brand-ink:#05301C;          /* тёмный текст на зелёной кнопке */
+  --brand-soft:#E5F7EE;         /* мягкая зелёная подложка (бейджи) */
 
   /* ---- Поверхности ---- */
-  --bg:#EEF1F6;
-  --card:#FFFFFF;
-  --card-2:#F7F9FC;
-  --card-bd:#E6E9F0;
-  --hairline:#EDEFF4;
-  --shadow:0 1px 3px rgba(16,24,40,.05), 0 1px 2px rgba(16,24,40,.04);
-  --shadow-pop:0 12px 32px -10px rgba(16,24,40,.22), 0 2px 8px rgba(16,24,40,.06);
+  --bg-default:#FCFCFC;         /* --background-default oklch(0.995 0 34) */
+  --surface-100:#FFFFFF;        /* карточки */
+  --surface-200:rgba(17,17,17,.035);  /* hover-подложки */
+  --surface-300:#F2F2F0;
+  --shadow-soft:0 1px 2px rgba(16,24,40,.04);
+  --shadow-pop:0 12px 32px -10px rgba(16,24,40,.18), 0 2px 8px rgba(16,24,40,.06);
 
   /* ---- Текст ---- */
-  --ink:#1A2233;
-  --ink-2:#5B6478;
-  --ink-3:#8A93A6;
-  --label:#9AA3B5;
+  --fg:#111110;                 /* --foreground-default oklch(0.1 0 34) */
+  --fg-light:#525250;           /* --foreground-light oklch(0.394 0 34) */
+  --fg-muted:#767672;           /* --foreground-muted oklch(0.52 0 34) */
 
-  /* ---- Акценты ---- */
-  --primary:#2F6BED;
-  --primary-hover:#255CD6;
-  --primary-ink:#FFFFFF;
-  --primary-soft:#E9EEFD;
-  --primary-on-soft:#2F6BED;
-  --indigo:#5B5BD6;
-  --teal:#0EA5A5;
-  --magenta:#7C3AED;
-  --purple:#7C5CFC;
-  --success:#22C55E;
-  --warning:#F59E0B;
-  --danger:#EF4444;
+  /* ---- Границы ---- */
+  --border:rgba(17,17,16,.09);        /* --border-default ~8% чёрного */
+  --border-strong:rgba(17,17,16,.15); /* --border-strong ~14.6% */
+
+  /* ---- Статусы ---- */
+  --status-ok:#097C4F;    --status-ok-bg:#E5F7EE;
+  --status-warn:#A16207;  --status-warn-bg:#FDF3D9;
+  --status-bad:#CA3A31;   --status-bad-bg:#FDECEA;
 
   /* ---- Подложки бейджей (фон/текст) ---- */
-  --b-amber-bg:#FDF0D5;  --b-amber-ink:#9A6700;
-  --b-green-bg:#E6F7EC;  --b-green-ink:#15803D;
-  --b-red-bg:#FDECEC;    --b-red-ink:#B42318;
-  --b-blue-bg:#E9EEFD;   --b-blue-ink:#1D4FBF;
-  --b-violet-bg:#EFEBFE; --b-violet-ink:#5B3FC4;
+  --b-amber-bg:#FDF3D9;  --b-amber-ink:#A16207;
+  --b-green-bg:#E5F7EE;  --b-green-ink:#097C4F;
+  --b-red-bg:#FDECEA;    --b-red-ink:#CA3A31;
+  --b-blue-bg:#EEF4FC;   --b-blue-ink:#1D4FBF;
+  --b-violet-bg:#F1EEFC; --b-violet-ink:#5B3FC4;
 
-  /* ---- Таблицы «как кабинет WB» ---- */
-  --wbt-head-bg:#F0F0F3;
-  --wbt-hover-bg:#F0F0F3;
-  --wbt-border:#D1CFD7;
-  --wbt-text:#000;
-  --wbt-sel:#cfe3ff;
+  /* ---- Таблицы (рецепт Supabase: тонкие границы, hover-строки) ---- */
+  --wbt-head-bg:#FCFCFC;
+  --wbt-hover-bg:rgba(17,17,17,.027);
+  --wbt-border:rgba(17,17,16,.09);
+  --wbt-text:#111110;
+  --wbt-sel:#D9F4E7;
 
-  /* ---- Геометрия ---- */
-  --r-card:18px;
-  --r-panel:14px;
-  --r-ctl:10px;
+  /* ---- Геометрия и движение ---- */
+  --radius-sm:4px;
+  --radius:6px;
+  --radius-lg:8px;
   --r-pill:999px;
-  --pad-card:22px;
-  --gap:18px;
-  --mark-r:11px;
-  --mark-bg:linear-gradient(150deg,#3D78F0,#2F6BED 55%,#2350C8);
-  --ease:cubic-bezier(.2,.7,.2,1);
+  --r-card:8px;
+  --r-panel:8px;
+  --r-ctl:6px;
+  --pad-card:20px;
+  --gap:16px;
+  --sb-ease:cubic-bezier(0,0,.2,1);
+  --sb-topbar-h:47px;
+  --sb-rail-w:48px;
+  --sb-rail-w-open:220px;
+
+  /* ---- Совместимость со старыми именами .iw-* ---- */
+  --card:#FFFFFF;
+  --card-2:#FAFAFA;
+  --card-bd:rgba(17,17,16,.09);
+  --hairline:rgba(17,17,16,.07);
+  --label:#767672;
+  --primary:#3FCF8E;
+  --primary-hover:#097C4F;
+  --primary-ink:#05301C;
+  --primary-soft:#E5F7EE;
+  --primary-on-soft:#097C4F;
+  --success:#3FCF8E;
+  --warning:#F59E0B;
+  --danger:#CA3A31;
+  --mark-r:6px;
+  --mark-bg:linear-gradient(150deg,#72E3AD,#3FCF8E 55%,#097C4F);
 
   /* ===================================================================
      LEGACY BRIDGE — переопределяем токены существующих страниц.
      !important, чтобы перекрыть [data-theme] страниц и тёмную тему.
      =================================================================== */
   --surface:#FFFFFF !important;
-  --surface-2:#F7F9FC !important;
-  --surface-3:#EEF1F6 !important;
+  --surface-2:#FAFAFA !important;
+  --surface-3:#F2F2F0 !important;
   --field:#FFFFFF !important;
-  --bg:#EEF1F6 !important;
-  --ink:#1A2233 !important;
-  --ink-2:#5B6478 !important;
-  --ink-3:#8A93A6 !important;
-  --line:#E6E9F0 !important;
-  --line-2:#D8DCE6 !important;
-  --line-strong:#1A2233 !important;
-  --accent:#2F6BED !important;
-  --accent-ink:#FFFFFF !important;
-  --accent-deep:#2F6BED !important;
-  --ok:#15803D !important;   --ok-bg:#E6F7EC !important;
-  --warn:#9A6700 !important;  --warn-bg:#FDF0D5 !important;
-  --bad:#B42318 !important;   --bad-bg:#FDECEC !important;
-  --err:#B42318 !important;
-  --zebra:#F7F9FC !important;
+  --bg:#FCFCFC !important;
+  --ink:#111110 !important;
+  --ink-2:#525250 !important;
+  --ink-3:#767672 !important;
+  --line:rgba(17,17,16,.09) !important;
+  --line-2:rgba(17,17,16,.13) !important;
+  --line-strong:rgba(17,17,16,.22) !important;
+  --accent:#3FCF8E !important;
+  --accent-ink:#05301C !important;
+  --accent-deep:#097C4F !important;
+  --ok:#097C4F !important;   --ok-bg:#E5F7EE !important;
+  --warn:#A16207 !important;  --warn-bg:#FDF3D9 !important;
+  --bad:#CA3A31 !important;   --bad-bg:#FDECEA !important;
+  --err:#CA3A31 !important;
+  --zebra:#FAFAFA !important;
   --glow:none !important;
-  /* интерфейс — WB Hauss VF; editorial-сериф убираем в пользу Hauss */
+  --shadow:0 1px 2px rgba(16,24,40,.04) !important;
+  /* Радиусы страниц — под шкалу Supabase (база 6px). */
+  --r:6px !important;
+  --r-sm:4px !important;
+  /* Движение — фирменный ease-out Supabase, 200ms. */
+  --ease:cubic-bezier(0,0,.2,1) !important;
+  /* Шрифты: тело — Inter; «editorial»-сериф страниц — Manrope (заголовочный). */
   --sans:var(--iw-sans) !important;
-  --serif:var(--iw-sans) !important;
+  --serif:var(--iw-heading) !important;
   --mono:var(--iw-mono) !important;
 }
 
-/* Базовая типографика интерфейса */
+/* Базовая типографика интерфейса: Inter, вес 450 — фирменная деталь Supabase
+   (промежуточный между regular и medium; Inter — вариативный, вес поддержан). */
 body{
   font-family:var(--iw-sans);
-  font-size:15px; line-height:1.5;
+  font-size:14px; line-height:1.5; font-weight:450;
+  background:var(--bg-default);
   -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
 }
+::selection{ background:var(--brand-light); color:var(--brand-ink); }
 
-/* Декоративные эмодзи в шапках/навигации — скрыть (см. §5 спецификации).
+/* Заголовки — Manrope 600 c отрицательным letter-spacing (как h1 дашборда). */
+h1,h2,h3,h4,legend{
+  font-family:var(--iw-heading);
+  font-weight:600;
+  letter-spacing:-.02em;
+}
+
+/* Editorial-сериф и курсив старых страниц — приводим к Manrope без курсива. */
+.screen-title, .hero-title, .title, .wordmark-text{
+  font-family:var(--iw-heading) !important;
+  font-style:normal !important;
+  font-weight:600 !important;
+  letter-spacing:-.025em !important;
+}
+.screen-title{ font-size:24px !important; }
+
+/* Декоративные эмодзи в шапках/навигации — скрыть (минимализм Supabase).
    Функциональные значки (статусы/бейджи) остаются — у них другие классы. */
-.ico{ display:none !important; }
+.ico, .howto summary .ic{ display:none !important; }
+/* Эмодзи-плитки карточек обзора — приглушить до нейтральных значков. */
+.hc-ico{ filter:grayscale(1); opacity:.72; background:var(--surface-300) !important; border-radius:var(--radius) !important; }
 
-/* Тёмной темы в IndexoWB нет — прячем переключатели темы. */
+/* Тёмной темы в этой редакции нет (спека снята со светлой) — переключатели прячем. */
 #theme-toggle{ display:none !important; }
+
+/* =========================================================================
+   КАРКАС SUPABASE: верхняя панель + левый икон-рейл (разметку внедряет shell.js)
+   ========================================================================= */
+html.sb-shell body{ padding-top:var(--sb-topbar-h); padding-left:var(--sb-rail-w); }
+
+/* ---- Top bar (~46px, белый, тонкая нижняя граница) ---- */
+.sb-topbar{
+  position:fixed; top:0; left:0; right:0; height:var(--sb-topbar-h);
+  background:var(--bg-default); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:6px; padding:0 12px 0 10px;
+  z-index:9000; font-family:var(--iw-sans); font-size:13px; font-weight:450;
+}
+.sb-crumbs{ display:flex; align-items:center; gap:2px; min-width:0; }
+.sb-logo{
+  width:26px; height:26px; border-radius:var(--radius); flex:none;
+  background:linear-gradient(150deg,#72E3AD,#3FCF8E 55%,#097C4F);
+  display:grid; place-items:center; color:#fff; margin-right:4px;
+}
+.sb-logo svg{ width:15px; height:15px; }
+.sb-slash{ color:var(--border-strong); font-size:15px; font-weight:300; padding:0 5px; user-select:none; transform:skewX(-12deg); }
+.sb-crumb{
+  display:inline-flex; align-items:center; gap:7px; max-width:260px;
+  padding:4px 8px; border-radius:var(--radius); border:0; background:transparent;
+  font:inherit; color:var(--fg); font-weight:500; cursor:default; white-space:nowrap;
+  transition:background .2s var(--sb-ease);
+  text-decoration:none;
+}
+button.sb-crumb, a.sb-crumb{ cursor:pointer; }
+button.sb-crumb:hover, a.sb-crumb:hover{ background:var(--surface-200); }
+.sb-crumb .sb-chev{ width:12px; height:12px; color:var(--fg-muted); flex:none; }
+.sb-badge{
+  display:inline-flex; align-items:center; font-size:10px; font-weight:600;
+  letter-spacing:.04em; text-transform:uppercase; line-height:1;
+  padding:4px 8px; border-radius:var(--r-pill); white-space:nowrap;
+}
+.sb-badge.is-free{ background:var(--surface-300); color:var(--fg-light); border:1px solid var(--border); }
+.sb-badge.is-prod{ background:var(--brand-soft); color:var(--brand-dark); border:1px solid rgba(9,124,79,.18); }
+.sb-top-right{ margin-left:auto; display:flex; align-items:center; gap:6px; }
+.sb-status{ display:inline-flex; align-items:center; gap:6px; color:var(--fg-muted); font-size:12px; padding:4px 8px; }
+.sb-status .sb-dot{ width:8px; height:8px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 3px rgba(63,207,142,.22); }
+.sb-avatar{
+  width:26px; height:26px; border-radius:50%; flex:none;
+  background:linear-gradient(150deg,#72E3AD,#3FCF8E 60%,#097C4F);
+  color:#fff; font-size:12px; font-weight:700; display:grid; place-items:center;
+  border:1px solid rgba(9,124,79,.25);
+}
+
+/* Dropdown переключателя страниц в крошках */
+.sb-menu{
+  position:fixed; z-index:9500; min-width:230px; padding:5px;
+  background:var(--surface-100); border:1px solid var(--border);
+  border-radius:var(--radius-lg); box-shadow:var(--shadow-pop);
+}
+.sb-menu[hidden]{ display:none; }
+.sb-menu a{
+  display:flex; align-items:center; gap:9px; padding:8px 10px;
+  border-radius:var(--radius); font-size:13px; color:var(--fg); text-decoration:none;
+  transition:background .2s var(--sb-ease);
+}
+.sb-menu a:hover{ background:var(--surface-200); }
+.sb-menu a svg{ width:15px; height:15px; color:var(--fg-muted); flex:none; }
+.sb-menu a .sb-check{ margin-left:auto; color:var(--brand-dark); font-weight:700; }
+
+/* ---- Левый икон-рейл: свёрнут 48px, при наведении — панель 220px (overlay) ---- */
+.sb-rail{
+  position:fixed; top:var(--sb-topbar-h); bottom:0; left:0; width:var(--sb-rail-w);
+  background:var(--bg-default); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; gap:2px; padding:8px 6px;
+  z-index:8900; overflow:hidden;
+  transition:width .2s var(--sb-ease), box-shadow .2s var(--sb-ease);
+}
+.sb-rail:hover{ width:var(--sb-rail-w-open); box-shadow:14px 0 28px -16px rgba(16,24,40,.14); }
+.sb-rail a{
+  display:flex; align-items:center; gap:11px; height:36px; flex:none;
+  padding:0 8px; border-radius:var(--radius); text-decoration:none;
+  color:var(--fg-light); font-family:var(--iw-sans); font-size:13px; font-weight:450;
+  white-space:nowrap; transition:background .2s var(--sb-ease), color .2s var(--sb-ease);
+}
+.sb-rail a svg{ width:19px; height:19px; flex:none; }
+.sb-rail a:hover{ background:var(--surface-200); color:var(--fg); }
+.sb-rail a.active{ background:var(--surface-200); color:var(--fg); font-weight:500; }
+.sb-rail .sb-label{ opacity:0; transition:opacity .15s var(--sb-ease); }
+.sb-rail:hover .sb-label{ opacity:1; }
+.sb-rail-sep{ height:1px; background:var(--border); margin:6px 3px; flex:none; }
+.sb-rail-spacer{ flex:1; }
+
+/* Мобильная раскладка: рейл превращается в нижний таб-бар. */
+@media (max-width:760px){
+  html.sb-shell body{ padding-left:0; padding-bottom:64px; }
+  .sb-rail{
+    top:auto; bottom:0; left:0; right:0; width:auto; height:60px;
+    flex-direction:row; align-items:center; justify-content:space-around;
+    border-right:0; border-top:1px solid var(--border); padding:6px 8px;
+  }
+  .sb-rail:hover{ width:auto; box-shadow:none; }
+  .sb-rail a{ flex-direction:column; gap:3px; height:auto; padding:5px 12px; font-size:10px; }
+  .sb-rail .sb-label{ opacity:1; }
+  .sb-rail-sep, .sb-rail-spacer{ display:none; }
+  .sb-status{ display:none; }
+  .sb-topbar .sb-badge{ display:none; }
+  .sb-crumb{ max-width:130px; overflow:hidden; text-overflow:ellipsis; }
+}
+
+/* Страницы, где shell.js дублирует брендинг в top bar, прячут свои вордмарки. */
+html.sb-shell .head .brand > .wordmark,
+html.sb-shell .head-top,
+html.sb-shell #logo, html.sb-shell #wordmarkText,
+html.sb-shell .head .brand > .wordmark-img,
+html.sb-shell .head .brand > .wordmark-text{ display:none !important; }
 
 /* =========================================================================
    КОМПОНЕНТЫ .iw-*
    ========================================================================= */
 
-/* ---- Кнопки ---- */
+/* ---- Кнопки (переход у всех: 200ms ease-out) ---- */
 .iw-btn{
   display:inline-flex; align-items:center; justify-content:center; gap:8px;
-  font-family:var(--iw-sans); font-size:15px; font-weight:600; line-height:1;
-  padding:11px 16px; border-radius:var(--r-ctl); border:1px solid transparent;
+  font-family:var(--iw-sans); font-size:13px; font-weight:500; line-height:1;
+  padding:9px 14px; border-radius:var(--r-ctl); border:1px solid transparent;
   cursor:pointer; white-space:nowrap; text-decoration:none;
-  transition:background .12s var(--ease), color .12s var(--ease),
-             border-color .12s var(--ease), transform .12s var(--ease);
+  transition:all .2s var(--sb-ease);
 }
 .iw-btn:active{ transform:translateY(1px); }
 .iw-btn[disabled]{ opacity:.55; cursor:default; transform:none; }
-.iw-btn-sm{ padding:7px 12px; font-size:13px; }
-.iw-btn-block{ width:100%; padding:13px 16px; }
-.iw-btn-primary{ background:var(--primary); color:var(--primary-ink); border-color:var(--primary); }
-.iw-btn-primary:hover{ background:var(--primary-hover); border-color:var(--primary-hover); }
-.iw-btn-secondary{ background:var(--card); color:var(--ink); border-color:var(--card-bd); }
-.iw-btn-secondary:hover{ background:var(--card-2); }
-.iw-btn-submit{ background:var(--magenta); color:#fff; border-color:var(--magenta); }
-.iw-btn-submit:hover{ filter:brightness(1.06); }
-.iw-btn-process{ background:var(--teal); color:#fff; border-color:var(--teal); }
-.iw-btn-process:hover{ filter:brightness(1.05); }
+.iw-btn-sm{ padding:6px 10px; font-size:12px; }
+.iw-btn-block{ width:100%; padding:11px 14px; }
+.iw-btn-primary{ background:var(--brand); color:var(--brand-ink); border-color:var(--brand-dark); }
+.iw-btn-primary:hover{ background:var(--brand-dark); border-color:var(--brand-dark); color:#fff; }
+.iw-btn-secondary{ background:var(--surface-100); color:var(--fg); border-color:var(--border-strong); }
+.iw-btn-secondary:hover{ background:var(--surface-200); }
+.iw-btn-submit{ background:var(--brand); color:var(--brand-ink); border-color:var(--brand-dark); }
+.iw-btn-submit:hover{ background:var(--brand-dark); color:#fff; }
+.iw-btn-process{ background:var(--surface-100); color:var(--brand-dark); border-color:var(--border-strong); }
+.iw-btn-process:hover{ background:var(--surface-200); }
 .iw-btn-danger{ background:transparent; color:var(--danger); border-color:var(--danger); }
 .iw-btn-danger:hover{ background:var(--danger); color:#fff; }
 
 /* ---- Поля ввода ---- */
 .iw-input, .iw-select, .iw-textarea{
-  width:100%; font-family:var(--iw-sans); font-size:14.5px; color:var(--ink);
-  background:var(--card); border:1px solid var(--card-bd); border-radius:var(--r-ctl);
-  padding:11px 13px; outline:none;
-  transition:border-color .12s var(--ease), box-shadow .12s var(--ease);
+  width:100%; font-family:var(--iw-sans); font-size:13px; color:var(--fg);
+  background:var(--surface-100); border:1px solid var(--border-strong); border-radius:var(--r-ctl);
+  padding:9px 12px; outline:none;
+  transition:border-color .2s var(--sb-ease), box-shadow .2s var(--sb-ease);
 }
-.iw-input::placeholder, .iw-textarea::placeholder{ color:var(--ink-3); }
+.iw-input::placeholder, .iw-textarea::placeholder{ color:var(--fg-muted); }
 .iw-input:focus, .iw-select:focus, .iw-textarea:focus{
-  border-color:var(--primary); box-shadow:0 0 0 3px rgba(47,107,237,.18);
+  border-color:var(--brand); box-shadow:0 0 0 3px rgba(63,207,142,.24);
 }
 .iw-select{
-  -webkit-appearance:none; appearance:none; padding-right:38px; cursor:pointer;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235B6478' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
-  background-repeat:no-repeat; background-position:right 13px center;
+  -webkit-appearance:none; appearance:none; padding-right:36px; cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23767672' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat; background-position:right 12px center;
 }
 .iw-textarea{ resize:vertical; min-height:96px; line-height:1.5; }
 
-/* ---- Карточки ---- */
+/* ---- Карточки: белые, тонкая граница, radius 8, почти без тени ---- */
 .iw-card{
-  background:var(--card); border:1px solid var(--card-bd); border-radius:var(--r-card);
-  padding:var(--pad-card); box-shadow:var(--shadow);
+  background:var(--surface-100); border:1px solid var(--border); border-radius:var(--r-card);
+  padding:var(--pad-card); box-shadow:var(--shadow-soft);
 }
 .iw-card-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
-.iw-card-title{ display:flex; align-items:center; gap:9px; font-size:17px; font-weight:600; color:var(--ink); margin:0; }
-.iw-section-title{ font-size:13px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--label); margin:0 0 10px; }
+.iw-card-title{ display:flex; align-items:center; gap:9px; font-family:var(--iw-heading); font-size:15px; font-weight:600; letter-spacing:-.01em; color:var(--fg); margin:0; }
+/* Uppercase-метки карточек (STATUS / COMPUTE …) */
+.iw-section-title{ font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-muted); margin:0 0 10px; }
 
-/* ---- Табы-пилюли ---- */
+/* ---- Табы: активный — светло-серая подложка (как активный пункт меню) ---- */
 .iw-tab{
   display:inline-flex; align-items:center; gap:8px;
-  font-family:var(--iw-sans); font-size:15px; font-weight:600;
-  padding:8px 14px; border-radius:var(--r-pill); border:0; background:transparent;
-  color:var(--ink-2); cursor:pointer; transition:background .12s var(--ease), color .12s var(--ease);
+  font-family:var(--iw-sans); font-size:13px; font-weight:500;
+  padding:6px 12px; border-radius:var(--radius); border:0; background:transparent;
+  color:var(--fg-light); cursor:pointer; transition:all .2s var(--sb-ease);
 }
-.iw-tab:hover{ color:var(--ink); }
-.iw-tab.active{ background:var(--primary-soft); color:var(--primary-on-soft); }
-.iw-tab.active::before{ content:""; width:6px; height:6px; border-radius:50%; background:var(--primary); }
+.iw-tab:hover{ color:var(--fg); background:var(--surface-200); }
+.iw-tab.active{ background:var(--surface-200); color:var(--fg); }
 
-/* ---- Сегменты (под-вкладки) ---- */
+/* ---- Сегменты (под-вкладки, underline-стиль Advisors) ---- */
 .iw-seg{
-  font-size:13.5px; font-weight:600; padding:9px 13px; border:0; background:transparent;
-  color:var(--ink-2); cursor:pointer; border-bottom:2px solid transparent;
+  font-size:13px; font-weight:500; padding:8px 12px; border:0; background:transparent;
+  color:var(--fg-light); cursor:pointer; border-bottom:2px solid transparent;
+  transition:all .2s var(--sb-ease);
 }
-.iw-seg.active{ color:var(--ink); border-bottom-color:var(--primary); }
+.iw-seg.active{ color:var(--fg); border-bottom-color:var(--brand); }
 
 /* ---- Бейджи / пилюли ---- */
 .iw-badge{
-  display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
-  padding:3px 10px; border-radius:var(--r-pill);
+  display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600;
+  letter-spacing:.02em; padding:3px 9px; border-radius:var(--r-pill);
 }
 .iw-dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
 .iw-pill{
-  display:inline-flex; align-items:center; gap:7px; font-size:13.5px; font-weight:600;
-  padding:8px 14px; border-radius:var(--r-pill); border:1px solid var(--card-bd);
+  display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:500;
+  padding:6px 12px; border-radius:var(--r-pill); border:1px solid var(--border-strong);
 }
 .iw-badge.is-amber{ background:var(--b-amber-bg); color:var(--b-amber-ink); }
 .iw-badge.is-green{ background:var(--b-green-bg); color:var(--b-green-ink); }
@@ -214,61 +379,122 @@ body{
 .iw-badge.is-violet{ background:var(--b-violet-bg); color:var(--b-violet-ink); }
 
 /* ---- Метрики ---- */
-.iw-metric-num{ font-size:40px; font-weight:700; line-height:1; color:var(--ink); font-variant-numeric:tabular-nums; }
-.iw-metric-unit{ font-size:16px; font-weight:600; color:var(--ink-2); }
+.iw-metric-num{ font-family:var(--iw-heading); font-size:36px; font-weight:600; line-height:1; letter-spacing:-.02em; color:var(--fg); font-variant-numeric:tabular-nums; }
+.iw-metric-unit{ font-size:15px; font-weight:500; color:var(--fg-light); }
 
 /* ---- Бренд-знак / вордмарк ---- */
 .iw-mark{
-  width:40px; height:40px; border-radius:var(--mark-r); background:var(--mark-bg);
-  display:grid; place-items:center; color:#fff; font-weight:800; font-size:20px; flex:none;
+  width:36px; height:36px; border-radius:var(--mark-r); background:var(--mark-bg);
+  display:grid; place-items:center; color:#fff; font-weight:800; font-size:18px; flex:none;
 }
-.iw-name{ font-size:21px; font-weight:800; letter-spacing:-.02em; color:var(--ink); }
+.iw-name{ font-family:var(--iw-heading); font-size:19px; font-weight:700; letter-spacing:-.02em; color:var(--fg); }
 
 /* ---- Callout ---- */
 .iw-callout{
-  padding:12px 14px; border-radius:var(--r-panel); font-size:13.5px; line-height:1.5;
-  border:1px solid var(--card-bd); background:var(--card-2); color:var(--ink-2);
+  padding:12px 14px; border-radius:var(--r-panel); font-size:13px; line-height:1.5;
+  border:1px solid var(--border); background:var(--card-2); color:var(--fg-light);
 }
-.iw-callout.is-amber{ background:var(--b-amber-bg); border-color:transparent; color:var(--b-amber-ink); }
-.iw-callout.is-info{ background:var(--b-blue-bg); border-color:transparent; color:var(--b-blue-ink); }
-.iw-callout.is-success{ background:var(--b-green-bg); border-color:transparent; color:var(--b-green-ink); }
+.iw-callout.is-amber{ background:var(--b-amber-bg); border-color:rgba(161,98,7,.22); color:var(--b-amber-ink); }
+.iw-callout.is-info{ background:var(--b-blue-bg); border-color:rgba(29,79,191,.18); color:var(--b-blue-ink); }
+.iw-callout.is-success{ background:var(--b-green-bg); border-color:rgba(9,124,79,.2); color:var(--b-green-ink); }
 
-/* ---- Таблицы (единый рецепт «как кабинет WB») ---- */
-.iw-table-wrap{ border:1px solid var(--wbt-border); border-radius:var(--r-panel); overflow-x:auto; }
-.iw-table{ width:100%; border-collapse:collapse; font-family:var(--wbt-table-font); font-size:16px; color:var(--wbt-text); }
+/* ---- Таблицы (рецепт Supabase: компактные, тонкие границы, hover-строка) ---- */
+.iw-table-wrap{ border:1px solid var(--wbt-border); border-radius:var(--r-panel); overflow-x:auto; background:var(--surface-100); }
+.iw-table{ width:100%; border-collapse:collapse; font-family:var(--wbt-table-font); font-size:13px; color:var(--wbt-text); }
 .iw-table thead th{
-  position:sticky; top:0; z-index:10; background:var(--wbt-head-bg); color:#000;
-  font-size:13px; font-weight:700; text-align:left; padding:18px 12px;
+  position:sticky; top:0; z-index:10; background:var(--wbt-head-bg); color:var(--fg-muted);
+  font-size:11px; font-weight:500; letter-spacing:.06em; text-transform:uppercase;
+  text-align:left; padding:10px 12px;
   border-bottom:1px solid var(--wbt-border);
 }
-.iw-table tbody td{ font-size:16px; font-weight:400; line-height:20px; padding:20px 16px; border-bottom:1px solid var(--wbt-border); }
+.iw-table tbody td{ font-size:13px; font-weight:450; line-height:18px; padding:10px 12px; border-bottom:1px solid var(--wbt-border); }
 .iw-table tbody tr:hover{ background:var(--wbt-hover-bg); }
-.iw-num{ text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.iw-num{ text-align:right; font-variant-numeric:tabular-nums; font-weight:500; }
 
 /* ---- Оверлей / модалка ---- */
-.iw-overlay{ position:fixed; inset:0; background:rgba(16,24,40,.45); display:grid; place-items:center; z-index:1000; padding:18px; }
+.iw-overlay{ position:fixed; inset:0; background:rgba(16,24,40,.4); display:grid; place-items:center; z-index:10000; padding:18px; }
 .iw-modal{
-  background:var(--card); border:1px solid var(--card-bd); border-radius:var(--r-card);
-  max-width:420px; width:100%; padding:26px; box-shadow:var(--shadow-pop);
+  background:var(--surface-100); border:1px solid var(--border); border-radius:var(--radius-lg);
+  max-width:420px; width:100%; padding:24px; box-shadow:var(--shadow-pop);
 }
+
+/* ---- Skeleton-загрузка (шиммер лево→право) ---- */
+.iw-skeleton{
+  border-radius:var(--radius); background:var(--surface-300);
+  background-image:linear-gradient(90deg, transparent 0, rgba(255,255,255,.7) 45%, transparent 90%);
+  background-size:220% 100%; animation:iw-shimmer 1.4s var(--sb-ease) infinite;
+}
+@keyframes iw-shimmer{ from{ background-position:180% 0; } to{ background-position:-40% 0; } }
 
 /* =========================================================================
-   LEGACY COMPONENT SKIN — приводим существующие кнопки/табы к ролям IndexoWB
-   (только цвет/форма, без изменения разметки и JS-классов).
+   LEGACY COMPONENT SKIN — приводим существующие кнопки/табы/поля к ролям
+   Supabase (только цвет/форма, без изменения разметки и JS-классов).
    ========================================================================= */
 
-/* Активный таб: вместо тёмного — мягко-синий (--primary-soft). */
-.tab.active{ background:var(--primary-soft) !important; color:var(--primary-on-soft) !important; box-shadow:none !important; }
-
-/* Основные кнопки .btn (cards/app) — синие. */
-.btn{ background:var(--primary) !important; border-color:var(--primary) !important; color:#fff !important; }
-.btn:hover{ background:var(--primary-hover) !important; border-color:var(--primary-hover) !important; }
-.btn.accent{ background:var(--primary) !important; border-color:var(--primary) !important; color:#fff !important; }
-/* Вторичная кнопка — белая с рамкой (а не синяя заливка). */
-.btn.secondary{ background:var(--card) !important; color:var(--primary) !important; border-color:var(--card-bd) !important; }
-
-/* Главное действие «отправить/создать на WB» — пурпурное (magenta). */
-#applyBtn, #confirmApply, #createFromFileBtn{
-  background:var(--magenta) !important; border-color:var(--magenta) !important; color:#fff !important;
+/* Вкладки страниц: активная — светло-серая подложка + тёмный текст
+   (как активный пункт левого меню Supabase). */
+.tab{
+  background:transparent !important; border:0 !important;
+  border-radius:var(--radius) !important;
+  color:var(--fg-light) !important; font-weight:500 !important; font-size:13px !important;
+  box-shadow:none !important;
+  transition:all .2s var(--sb-ease) !important;
 }
-#applyBtn:hover, #confirmApply:hover, #createFromFileBtn:hover{ filter:brightness(1.06); }
+.tab:hover{ background:var(--surface-200) !important; color:var(--fg) !important; }
+.tab.active{ background:var(--surface-200) !important; color:var(--fg) !important; box-shadow:none !important; }
+
+/* Primary-кнопки .btn — зелёные (#3FCF8E, тёмный текст, hover → #097C4F). */
+.btn{
+  background:var(--brand) !important; border-color:var(--brand-dark) !important;
+  color:var(--brand-ink) !important; font-weight:500 !important;
+  box-shadow:none !important;
+  transition:all .2s var(--sb-ease) !important;
+}
+.btn:hover{ background:var(--brand-dark) !important; border-color:var(--brand-dark) !important; color:#fff !important; transform:none !important; }
+.btn.accent{ background:var(--brand) !important; border-color:var(--brand-dark) !important; color:var(--brand-ink) !important; }
+.btn.accent:hover{ background:var(--brand-dark) !important; color:#fff !important; }
+/* Вторичная кнопка — белая с тонкой рамкой (outline-вариант Supabase). */
+.btn.secondary{ background:var(--surface-100) !important; color:var(--fg) !important; border-color:var(--border-strong) !important; }
+.btn.secondary:hover{ background:var(--surface-200) !important; color:var(--fg) !important; }
+
+/* Кнопка копирования результата (app) — зелёная CTA. */
+.copy{ background:var(--brand) !important; color:var(--brand-ink) !important; }
+.copy.done{ background:transparent !important; color:var(--fg) !important; }
+
+/* Инпуты и селекты стиля «подчёркивание» (app, data-style="A") — боксовые поля. */
+[data-style="A"] select,
+[data-style="A"] input[type="text"]{
+  background:var(--surface-100) !important;
+  border:1px solid var(--border-strong) !important;
+  border-radius:var(--r-ctl) !important;
+  padding:10px 12px !important;
+}
+[data-style="A"] select{ padding-right:38px !important; }
+[data-style="A"] .chev{ right:14px !important; }
+[data-style="A"] select:focus,
+[data-style="A"] input[type="text"]:focus{
+  border-color:var(--brand) !important;
+  box-shadow:0 0 0 3px rgba(63,207,142,.24) !important;
+}
+[data-style="A"] input.invalid{
+  border-color:var(--status-bad) !important;
+  box-shadow:0 0 0 3px rgba(202,58,49,.16) !important;
+}
+/* Карточка результата — обычная карточка Supabase вместо «editorial»-линии. */
+[data-style="A"] .result-card{
+  border:1px solid var(--border) !important;
+  border-radius:var(--radius-lg) !important;
+}
+select, input[type="text"], input[type="date"], input[type="number"], textarea{
+  font-size:13.5px;
+}
+
+/* Сезонная аналитика: заголовок — по шкале дашборда, без курсивного хвоста. */
+h1.title{ font-size:clamp(24px,3vw,30px) !important; line-height:1.15 !important; }
+.title .cat{ font-style:normal !important; }
+/* Крупные значения метрик — заголовочный шрифт вместо моноширинного. */
+.hcard .hv, .kpi .v{ font-family:var(--iw-heading) !important; font-weight:600 !important; letter-spacing:-.02em !important; }
+
+/* Hero-баннер обзора — плоская карточка (без градиента и свечения). */
+.hero{ background:var(--surface-100) !important; border:1px solid var(--border) !important; }
+.hero::after{ display:none !important; }
