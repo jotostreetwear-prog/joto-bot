@@ -143,7 +143,9 @@ select:focus,input:focus,textarea:focus{border-color:var(--line-strong);
 .status.err{color:var(--err)}
 .picker{border:1.5px solid var(--line);border-radius:var(--r);background:var(--field);max-height:300px;overflow:auto}
 .picker-tools{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--field);z-index:2}
-.picker-tools input{flex:1}
+.picker-tools input{flex:1;min-width:120px}
+.picker-tools select{flex:none;width:auto;min-width:180px}
+.pick-brand{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);font-family:var(--sans);font-size:11px;font-weight:600;color:var(--ink-2);vertical-align:1px}
 .pick-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer}
 .pick-row:last-child{border-bottom:none}
 .pick-row:hover{background:var(--surface-2)}
@@ -899,6 +901,7 @@ $("recFilter").addEventListener("change",recRenderTable);
 ============================================================ */
 var ALL_CARDS=[];          // simplified карточки с WB
 var selected=new Set();    // nmID выбранных
+var PICK_SHOWN=-1;         // сколько строк сейчас проходит фильтр
 
 $("loadBtn").addEventListener("click",async function(){
   spinOn($("loadBtn"),true,"Загружаю…");
@@ -920,11 +923,32 @@ $("searchInp").addEventListener("keydown",function(e){
 });
 
 function renderPicker(cards){
-  var html='<div class="picker-tools"><input id="pickFilter" type="text" placeholder="фильтр по артикулу/названию"></div>';
+  // предметы (категории) в загруженной выборке — для фильтра «по предмету»
+  var subjMap={};
   cards.forEach(function(c){
-    html+='<label class="pick-row" data-vc="'+esc((c.vendorCode||"")+" "+(c.title||"")).toLowerCase()+'">'
+    var key=subjKey(c);
+    if(!subjMap[key]) subjMap[key]={name:c.subjectName||"— без предмета —",count:0};
+    subjMap[key].count++;
+  });
+  var subjKeys=Object.keys(subjMap).sort(function(a,b){
+    return String(subjMap[a].name).localeCompare(String(subjMap[b].name));
+  });
+  var subjOpts='<option value="">Все предметы ('+cards.length+')</option>'
+    +subjKeys.map(function(k){
+      return '<option value="'+esc(k)+'">'+esc(subjMap[k].name)+' ('+subjMap[k].count+')</option>';
+    }).join("");
+
+  var html='<div class="picker-tools">'
+    +'<input id="pickFilter" type="text" placeholder="фильтр по артикулу/названию/бренду">'
+    +'<select id="pickSubj" title="Показать только карточки одного предмета">'+subjOpts+'</select>'
+    +'</div>';
+  cards.forEach(function(c){
+    // в текстовый поиск попадают артикул, название и бренд
+    var hay=esc((c.vendorCode||"")+" "+(c.title||"")+" "+(c.brand||"")).toLowerCase();
+    html+='<label class="pick-row" data-vc="'+hay+'" data-subj="'+esc(subjKey(c))+'">'
       +'<input type="checkbox" value="'+c.nmID+'" '+(selected.has(c.nmID)?"checked":"")+'>'
-      +'<span class="grow"><span class="pick-vc">'+esc(c.vendorCode||"—")+'</span>'
+      +'<span class="grow"><span class="pick-vc">'+esc(c.vendorCode||"—")
+      +(c.brand?'<span class="pick-brand">'+esc(c.brand)+'</span>':'')+'</span>'
       +'<span class="pick-meta">'+esc(c.title||"")+' · '+esc(c.subjectName||"")+'</span></span></label>';
   });
   $("picker").innerHTML=html;
@@ -936,16 +960,34 @@ function renderPicker(cards){
     });
   });
   var f=$("pickFilter");
-  if(f) f.addEventListener("input",function(){
-    var q=f.value.trim().toLowerCase();
-    $("picker").querySelectorAll(".pick-row").forEach(function(r){
-      r.style.display=(!q||r.dataset.vc.indexOf(q)>=0)?"":"none";
-    });
+  if(f) f.addEventListener("input",applyPickFilter);
+  var sv=$("pickSubj");
+  if(sv) sv.addEventListener("change",applyPickFilter);
+  applyPickFilter();
+}
+/* ключ предмета: по subjectID, если он есть, иначе по названию */
+function subjKey(c){
+  return (c.subjectID!=null&&c.subjectID!=="")?("s"+c.subjectID):("n"+(c.subjectName||""));
+}
+/* фильтр списка: текст + выбранный предмет. «Выбрать все» работает по показанным */
+function applyPickFilter(){
+  var fi=$("pickFilter"), sv=$("pickSubj");
+  var q=fi?fi.value.trim().toLowerCase():"";
+  var sub=sv?sv.value:"";
+  var shown=0;
+  $("picker").querySelectorAll(".pick-row").forEach(function(r){
+    var ok=(!q||r.dataset.vc.indexOf(q)>=0)&&(!sub||r.dataset.subj===sub);
+    r.style.display=ok?"":"none";
+    if(ok) shown++;
   });
+  PICK_SHOWN=shown;
+  var filtered=(shown!==ALL_CARDS.length);
+  $("selAll").textContent=filtered?("Выбрать показанные ("+shown+")"):"Выбрать все";
   updateSelCount();
 }
 function updateSelCount(){
-  $("selCount").textContent="Выбрано: "+selected.size;
+  $("selCount").textContent="Выбрано: "+selected.size
+    +((PICK_SHOWN>=0&&PICK_SHOWN!==ALL_CARDS.length)?("  ·  показано: "+PICK_SHOWN+" из "+ALL_CARDS.length):"");
   if(fieldSel&&fieldSel.value==="merge") renderMergeTargets();
 }
 /* Список карточек-приёмников для склейки: по одной строке на каждый imtID из выбранных */
