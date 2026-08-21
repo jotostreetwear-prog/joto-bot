@@ -1718,6 +1718,19 @@ def wb_update_cards(raw_cards):
         results.append(wb_content_request("POST", "/content/v2/cards/update", json_body=chunk))
     return results
 
+def wb_move_nm(nm_ids, target_imt=None):
+    """Объединение / разъединение карточек WB (/content/v2/cards/moveNm).
+
+    С targetIMT — номенклатуры переезжают под указанный imtID (склейка цветов).
+    Без targetIMT — WB создаёт НОВЫЙ imtID для переданных номенклатур.
+    ВАЖНО: несколько nmID без targetIMT склеятся в ОДНУ новую карточку,
+    поэтому для настоящего разъединения шлём по одной номенклатуре за запрос.
+    """
+    body = {"nmIDs": [int(n) for n in nm_ids]}
+    if target_imt:
+        body["targetIMT"] = int(target_imt)
+    return wb_content_request("POST", "/content/v2/cards/moveNm", json_body=body)
+
 def wb_create_cards(items):
     return wb_content_request("POST", "/content/v2/cards/upload", json_body=items)
 
@@ -2071,6 +2084,60 @@ def api_wb_bulk_edit():
         return jsonify({"ok": True, "updated": len(cards)})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
+
+@app.route("/api/wb/move-nm", methods=["POST"])
+def api_wb_move_nm():
+    """Объединение / разъединение карточек WB.
+
+    mode="merge" — склеить выбранные номенклатуры в одну карточку.
+        targetIMT — imtID карточки-приёмника; пусто = собрать всё в новую карточку.
+    mode="split" — разъединить: каждой номенклатуре свой новый imtID
+        (шлём по одному запросу на номенклатуру — иначе WB склеит их вместе).
+    """
+    data = request.get_json(silent=True) or {}
+    mode = (data.get("mode") or "").strip()
+    target_imt = data.get("targetIMT") or None
+    nm_ids = []
+    for n in (data.get("nmIDs") or []):
+        try:
+            nm = int(n)
+        except (TypeError, ValueError):
+            continue
+        if nm and nm not in nm_ids:
+            nm_ids.append(nm)
+
+    if mode not in ("merge", "split"):
+        return jsonify({"ok": False, "error": "Неизвестный режим (ожидается merge или split)"}), 400
+    if not nm_ids:
+        return jsonify({"ok": False, "error": "Не выбрано ни одной карточки"}), 400
+    if mode == "merge" and len(nm_ids) < 2:
+        return jsonify({"ok": False, "error": "Для объединения выберите минимум 2 карточки"}), 400
+
+    def _fail(e):
+        msg = str(e)
+        if "401" in msg or "403" in msg:
+            msg += " — токену WB нужна категория «Контент» БЕЗ галочки «Только на чтение»."
+        return msg
+
+    try:
+        if mode == "merge":
+            wb_move_nm(nm_ids, target_imt)
+            return jsonify({"ok": True, "moved": len(nm_ids),
+                            "targetIMT": int(target_imt) if target_imt else None})
+
+        # split — строго по одной номенклатуре за запрос
+        done, errors = 0, []
+        for nm in nm_ids:
+            try:
+                wb_move_nm([nm], None)
+                done += 1
+            except Exception as e:
+                errors.append(f"{nm}: {_fail(e)}")
+        if errors and not done:
+            return jsonify({"ok": False, "error": "; ".join(errors)}), 502
+        return jsonify({"ok": True, "moved": done, "errors": errors})
+    except Exception as e:
+        return jsonify({"ok": False, "error": _fail(e)}), 502
 
 @app.route("/api/wb/set-prices", methods=["POST"])
 def api_wb_set_prices():

@@ -394,6 +394,10 @@ td textarea{min-height:40px}
           <label class="label" for="valLine">Новое значение</label>
           <input id="valLine" type="text" autocomplete="off">
         </div>
+        <div class="field grow2" id="valMergeWrap" hidden>
+          <label class="label" for="mergeTarget">Объединить в карточку</label>
+          <select id="mergeTarget"><option value="">— сначала отметьте карточки —</option></select>
+        </div>
       </div>
       <p class="note" id="editNote"></p>
 
@@ -607,7 +611,7 @@ td textarea{min-height:40px}
 
     <div class="m-step"><div class="m-ico">✎</div><div>
       <div class="m-tt">Редактирование карточек</div>
-      <div class="m-dd">«Загрузить карточки с WB» → отметьте нужные галочками → в списке «Что меняем» выберите поле (SEO-описание, название, артикул, категория, характеристика, цена) → введите значение → «Проверить и отправить» → посмотрите предпросмотр → «Подтвердить». Изменения уходят на Wildberries.</div>
+      <div class="m-dd">«Загрузить карточки с WB» → отметьте нужные галочками → в списке «Что меняем» выберите поле (SEO-описание, название, артикул, категория, характеристика, цена) либо «Соединить/Разъединить» для склейки цветов → введите значение → «Проверить и отправить» → посмотрите предпросмотр → «Подтвердить». Изменения уходят на Wildberries.</div>
     </div></div>
 
     <div class="m-step"><div class="m-ico">＋</div><div>
@@ -940,7 +944,25 @@ function renderPicker(cards){
   });
   updateSelCount();
 }
-function updateSelCount(){ $("selCount").textContent="Выбрано: "+selected.size; }
+function updateSelCount(){
+  $("selCount").textContent="Выбрано: "+selected.size;
+  if(fieldSel&&fieldSel.value==="merge") renderMergeTargets();
+}
+/* Список карточек-приёмников для склейки: по одной строке на каждый imtID из выбранных */
+function renderMergeTargets(){
+  var sel=$("mergeTarget"); if(!sel) return;
+  var cards=selectedCards();
+  if(cards.length===0){ sel.innerHTML='<option value="">— сначала отметьте карточки —</option>'; return; }
+  var keep=sel.value, seen={}, html="";
+  cards.forEach(function(c){
+    var imt=c.imtID; if(!imt||seen[imt]) return; seen[imt]=1;
+    var mates=cards.filter(function(o){return o.imtID===imt;}).map(function(o){return o.vendorCode||"—";});
+    html+='<option value="'+imt+'">'+esc(mates.join(" + "))+' · карточка №'+imt+'</option>';
+  });
+  html+='<option value="">— новая карточка (собрать всё в новую) —</option>';
+  sel.innerHTML=html;
+  if(keep) sel.value=keep;
+}
 $("selAll").addEventListener("click",function(){
   $("picker").querySelectorAll('.pick-row').forEach(function(r){
     if(r.style.display==="none")return;
@@ -963,7 +985,10 @@ async function buildChangeOptions(){
             ["subjectID","Категория"],["brand","Бренд"],["price","Цена, ₽"]];
   var baseHtml='<optgroup label="Основные">'+base.map(function(b){
     return '<option value="'+b[0]+'">'+b[1]+'</option>';}).join("")+'</optgroup>';
-  fieldSel.innerHTML=baseHtml+'<optgroup label="Характеристики"><option value="" disabled>— загрузка характеристик… —</option></optgroup>';
+  var structHtml='<optgroup label="Структура карточек">'
+    +'<option value="merge">Соединить — склеить выбранные в одну карточку</option>'
+    +'<option value="split">Разъединить — каждая станет отдельной карточкой</option></optgroup>';
+  fieldSel.innerHTML=baseHtml+structHtml+'<optgroup label="Характеристики"><option value="" disabled>— загрузка характеристик… —</option></optgroup>';
   fit();
   var map={},required={},subjects={};
   ALL_CARDS.forEach(function(c){
@@ -988,19 +1013,24 @@ async function buildChangeOptions(){
   var chOpts = keys.length
     ? keys.map(function(id){ return '<option value="charc:'+id+'">'+esc(map[id])+(required[id]?" *":"")+'</option>'; }).join("")
     : '<option value="" disabled>— нет (выберите карточки одной категории) —</option>';
-  fieldSel.innerHTML=baseHtml+'<optgroup label="Характеристики">'+chOpts+'</optgroup>';
+  fieldSel.innerHTML=baseHtml+structHtml+'<optgroup label="Характеристики">'+chOpts+'</optgroup>';
   updateFieldUI();
   fit();
 }
 
 function updateFieldUI(){
   var v=fieldSel.value, isCharc=(v.indexOf("charc:")===0);
+  var isStruct=(v==="merge"||v==="split");
   var f=isCharc?"characteristic":v;
   $("valTextWrap").hidden=(f!=="description");
   $("valCatWrap").hidden=(f!=="subjectID");
-  $("valLineWrap").hidden=(f==="description"||f==="subjectID"||f==="");
+  $("valLineWrap").hidden=(f==="description"||f==="subjectID"||f===""||isStruct);
+  $("valMergeWrap").hidden=(v!=="merge");
+  if(v==="merge") renderMergeTargets();
   var note="";
-  if(f==="vendorCode") note="⚠ Артикул уникален для каждой карточки — применяйте к одной карточке за раз.";
+  if(v==="merge") note="Выбранные карточки станут цветами ОДНОЙ карточки WB. Выберите главную — под неё всё объединится. Объединять можно только карточки одной категории.";
+  else if(v==="split") note="Каждая выбранная карточка станет самостоятельной, со своим номером. Запросы уходят по одному — иначе Wildberries склеит их в одну новую карточку.";
+  else if(f==="vendorCode") note="⚠ Артикул уникален для каждой карточки — применяйте к одной карточке за раз.";
   else if(f==="subjectID") note="⚠ Wildberries не всегда разрешает смену категории у существующей карточки.";
   else if(f==="price") note="Цена меняется через API цен WB (нужен доступ «Цены и скидки»). Укажите новую цену в рублях.";
   else if(isCharc) note="Несколько значений вводите через запятую.";
@@ -1024,7 +1054,7 @@ async function loadSubjectsInto(sel,name){
 
 function selectedCards(){ return ALL_CARDS.filter(function(c){return selected.has(c.nmID);}); }
 
-var FIELD_LABELS={description:"SEO-описание",title:"Название",brand:"Бренд",vendorCode:"Артикул",subjectID:"Категория",characteristic:"Характеристика",price:"Цена, ₽"};
+var FIELD_LABELS={description:"SEO-описание",title:"Название",brand:"Бренд",vendorCode:"Артикул",subjectID:"Категория",characteristic:"Характеристика",price:"Цена, ₽",merge:"Объединение карточек",split:"Разъединение карточек"};
 function truncate(s){ s=String(s==null?"":s); return s.length>44?s.slice(0,44)+"…":s; }
 function findCharc(card,id){ var a=card.characteristics||[]; for(var i=0;i<a.length;i++){ if(a[i].id===id) return a[i]; } return null; }
 
@@ -1033,6 +1063,13 @@ function buildEditPayload(){
   if(cards.length===0){ showStatus($("editStatus"),false,"Не выбрано ни одной карточки"); return null; }
   var v=fieldSel.value;
   if(!v){ showStatus($("editStatus"),false,"Выберите, что меняем"); return null; }
+  if(v==="merge"||v==="split"){
+    if(v==="merge"&&cards.length<2){ showStatus($("editStatus"),false,"Для объединения выберите минимум 2 карточки"); return null; }
+    var cats={}; cards.forEach(function(c){ if(c.subjectID!=null) cats[c.subjectID]=1; });
+    return { cards:cards, field:v, value:(v==="merge"?$("mergeTarget").value:""),
+             charcId:null, charcName:null, label:FIELD_LABELS[v],
+             mixedCats:(v==="merge"&&Object.keys(cats).length>1) };
+  }
   var isCharc=(v.indexOf("charc:")===0);
   var f=isCharc?"characteristic":v;
   var charcId=null,charcName=null,value,label;
@@ -1061,6 +1098,15 @@ function buildEditPayload(){
 
 function previewText(p){
   var f=p.field, lines=[];
+  if(f==="merge"||f==="split"){
+    var dest=(f==="split")?"своя новая карточка"
+      :(p.value?("карточка №"+p.value):"новая карточка");
+    p.cards.slice(0,12).forEach(function(c){
+      lines.push((c.vendorCode||"—")+":  сейчас №"+(c.imtID||"—")+"  →  "+dest);
+    });
+    if(p.cards.length>12) lines.push("…и ещё "+(p.cards.length-12)+" карточек");
+    return lines.join("\n");
+  }
   var newv=Array.isArray(p.value)?p.value.join(", "):p.value;
   if(f==="subjectID"){ var opt=$("subjSel").selectedOptions[0]; newv=opt?opt.textContent:p.value; }
   p.cards.slice(0,8).forEach(function(c){
@@ -1081,7 +1127,14 @@ $("applyBtn").addEventListener("click",function(){
   pendingPayload=p;
   var warn=(p.field==="vendorCode"&&p.cards.length>1)
     ? "  ⚠ Артикул уникален для каждой карточки — не задавайте одно значение нескольким!" : "";
-  $("confirmText").innerHTML="Будет изменено поле «"+esc(p.label)+"» у <b>"+p.cards.length+"</b> карточк(и) на Wildberries."+esc(warn);
+  if(p.mixedCats) warn="  ⚠ Выбраны карточки разных категорий — Wildberries может отклонить объединение.";
+  if(p.field==="merge"){
+    $("confirmText").innerHTML="Будет объединено <b>"+p.cards.length+"</b> карточк(и) в одну на Wildberries."+esc(warn);
+  } else if(p.field==="split"){
+    $("confirmText").innerHTML="Будет разъединено <b>"+p.cards.length+"</b> карточк(и) — каждая станет отдельной."+esc(warn);
+  } else {
+    $("confirmText").innerHTML="Будет изменено поле «"+esc(p.label)+"» у <b>"+p.cards.length+"</b> карточк(и) на Wildberries."+esc(warn);
+  }
   $("confirmPreview").textContent=previewText(p);
   $("confirmBox").style.display="block";
   $("editStatus").className="status";
@@ -1095,7 +1148,18 @@ $("confirmApply").addEventListener("click",async function(){
   spinOn($("confirmApply"),true,"Сохраняю на WB…");
   try{
     var j;
-    if(p.field==="price"){
+    if(p.field==="merge"||p.field==="split"){
+      var mv={ mode:p.field, nmIDs:p.cards.map(function(c){return c.nmID;}) };
+      if(p.field==="merge"&&p.value) mv.targetIMT=parseInt(p.value,10);
+      j=await api("/api/wb/move-nm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(mv)});
+      if(j.ok){
+        var msg=(p.field==="merge"?"Объединено карточек: ":"Разъединено карточек: ")+(j.moved||0)+".";
+        if(j.errors&&j.errors.length) msg+=" Не удалось: "+j.errors.join("; ");
+        showStatus($("editStatus"),true,msg+" Обновляю список с WB…");
+        $("confirmBox").style.display="none"; pendingPayload=null;
+        $("loadBtn").click();   // номера карточек изменились — перезагружаем список
+      } else showStatus($("editStatus"),false,j.error||"Ошибка объединения/разъединения");
+    } else if(p.field==="price"){
       var items=p.cards.map(function(c){return {nmID:c.nmID, price:parseFloat(p.value)};});
       j=await api("/api/wb/set-prices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:items})});
       if(j.ok){ showStatus($("editStatus"),true,"Цена отправлена на WB для "+items.length+" карточк(и). Обновление может занять несколько минут."); $("confirmBox").style.display="none"; pendingPayload=null; }
