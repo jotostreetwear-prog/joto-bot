@@ -1153,11 +1153,22 @@ $("confirmApply").addEventListener("click",async function(){
       if(p.field==="merge"&&p.value) mv.targetIMT=parseInt(p.value,10);
       j=await api("/api/wb/move-nm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(mv)});
       if(j.ok){
-        var msg=(p.field==="merge"?"Объединено карточек: ":"Разъединено карточек: ")+(j.moved||0)+".";
-        if(j.errors&&j.errors.length) msg+=" Не удалось: "+j.errors.join("; ");
-        showStatus($("editStatus"),true,msg+" Обновляю список с WB…");
+        var moved=j.moved||0, skip=j.skipped||0, errs=j.errors||[];
+        var parts=[];
+        if(moved) parts.push((p.field==="merge"?"Объединено карточек: ":"Разъединено карточек: ")+moved);
+        if(skip) parts.push(p.field==="merge"
+          ? ("уже были в одной карточке: "+skip)
+          : ("уже были отдельными: "+skip));
+        if(!moved&&!skip) parts.push("изменений не потребовалось");
+        var msg=parts.join(", ")+".";
+        if(errs.length){
+          // показываем 3 первые ошибки, остальное сворачиваем — иначе простыня
+          msg+=" Не удалось ("+errs.length+"): "+errs.slice(0,3).join("; ")
+             +(errs.length>3?(" …и ещё "+(errs.length-3)):"")+".";
+        }
+        showStatus($("editStatus"),errs.length===0,msg+(moved?" Обновляю список с WB…":""));
         $("confirmBox").style.display="none"; pendingPayload=null;
-        $("loadBtn").click();   // номера карточек изменились — перезагружаем список
+        if(moved) $("loadBtn").click();   // номера карточек изменились — перезагружаем список
       } else showStatus($("editStatus"),false,j.error||"Ошибка объединения/разъединения");
     } else if(p.field==="price"){
       var items=p.cards.map(function(c){return {nmID:c.nmID, price:parseFloat(p.value)};});

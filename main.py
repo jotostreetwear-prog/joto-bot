@@ -1523,6 +1523,20 @@ def wb_recom_request(path, body, params=None, timeout=60):
     except Exception:
         return {}
 
+class WbError(RuntimeError):
+    """Ошибка Content API WB с разобранным текстом (не сырой дамп словаря)."""
+    def __init__(self, path, status, detail):
+        self.status = status
+        self.detail = detail
+        text = ""
+        if isinstance(detail, dict):
+            text = str(detail.get("errorText") or detail.get("detail") or "").strip()
+            extra = detail.get("additionalErrors")
+            if isinstance(extra, dict) and extra:
+                text += " (" + "; ".join(f"{k}: {v}" for k, v in extra.items() if v) + ")"
+        self.text = text or str(detail)[:300]
+        super().__init__(f"WB {path} {status}: {self.text}")
+
 def wb_content_request(method, path, json_body=None, params=None, timeout=60):
     if not WB_API_TOKEN:
         raise RuntimeError("WB_API_TOKEN не задан — нужен токен с доступом к категории «Контент».")
@@ -1534,7 +1548,7 @@ def wb_content_request(method, path, json_body=None, params=None, timeout=60):
             detail = r.json()
         except Exception:
             detail = r.text[:500]
-        raise RuntimeError(f"WB {path} {r.status_code}: {detail}")
+        raise WbError(path, r.status_code, detail)
     try:
         return r.json()
     except Exception:
@@ -2119,23 +2133,40 @@ def api_wb_move_nm():
             msg += " — токену WB нужна категория «Контент» БЕЗ галочки «Только на чтение»."
         return msg
 
+    def _is_noop(e):
+        """WB отвечает «All cards are in the same group», когда переносить нечего:
+        при разъединении — номенклатура уже одна в своей карточке,
+        при объединении — все выбранные уже лежат под одним imtID.
+        Это не ошибка, а «уже в нужном состоянии»."""
+        text = getattr(e, "text", "") or str(e)
+        return "same group" in text.lower()
+
     try:
         if mode == "merge":
-            wb_move_nm(nm_ids, target_imt)
-            return jsonify({"ok": True, "moved": len(nm_ids),
+            try:
+                wb_move_nm(nm_ids, target_imt)
+            except Exception as e:
+                if not _is_noop(e):
+                    raise
+                return jsonify({"ok": True, "moved": 0, "skipped": len(nm_ids),
+                                "targetIMT": int(target_imt) if target_imt else None})
+            return jsonify({"ok": True, "moved": len(nm_ids), "skipped": 0,
                             "targetIMT": int(target_imt) if target_imt else None})
 
         # split — строго по одной номенклатуре за запрос
-        done, errors = 0, []
+        done, skipped, errors = 0, 0, []
         for nm in nm_ids:
             try:
                 wb_move_nm([nm], None)
                 done += 1
             except Exception as e:
-                errors.append(f"{nm}: {_fail(e)}")
-        if errors and not done:
+                if _is_noop(e):
+                    skipped += 1
+                else:
+                    errors.append(f"{nm}: {_fail(e)}")
+        if errors and not done and not skipped:
             return jsonify({"ok": False, "error": "; ".join(errors)}), 502
-        return jsonify({"ok": True, "moved": done, "errors": errors})
+        return jsonify({"ok": True, "moved": done, "skipped": skipped, "errors": errors})
     except Exception as e:
         return jsonify({"ok": False, "error": _fail(e)}), 502
 
